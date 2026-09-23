@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.uv-cache/
+.pytest_cache/
+
+# Node / Next.js (apps/web, added later)
+node_modules/
+.next/
+out/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Supabase local
+supabase/.branches
+supabase/.temp
+
+# OS
+.DS_Store
+
+# Editors
+.vscode/
+.idea/

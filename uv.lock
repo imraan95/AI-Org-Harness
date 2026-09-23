@@ -1,0 +1,67 @@
+version = 1
+revision = 3
+requires-python = ">=3.10"
+
+[manifest]
+members = [
+    "context-agent",
+    "db",
+    "harness-api",
+    "ingestion-service",
+    "knowledge-model",
+    "llm-router",
+    "mcp-server",
+    "openviking-client",
+    "org-harness",
+    "shared-schemas",
+]
+
+[[package]]
+name = "context-agent"
+version = "0.1.0"
+source = { editable = "apps/context-agent" }
+
+[[package]]
+name = "db"
+version = "0.1.0"
+source = { editable = "libs/db" }
+
+[[package]]
+name = "harness-api"
+version = "0.1.0"
+source = { editable = "apps/harness-api" }
+
+[[package]]
+name = "ingestion-service"
+version = "0.1.0"
+source = { editable = "apps/ingestion-service" }
+
+[[package]]
+name = "knowledge-model"
+version = "0.1.0"
+source = { editable = "libs/knowledge_model" }
+
+[[package]]
+name = "llm-router"
+version = "0.1.0"
+source = { editable = "libs/llm_router" }
+
+[[package]]
+name = "mcp-server"
+version = "0.1.0"
+source = { editable = "apps/mcp-server" }
+
+[[package]]
+name = "openviking-client"
+version = "0.1.0"
+source = { editable = "libs/openviking_client" }
+
+[[package]]
+name = "org-harness"
+version = "0.1.0"
+source = { virtual = "." }
+
+[[package]]
+name = "shared-schemas"
+version = "0.1.0"
+source = { editable = "libs/shared_schemas" }
