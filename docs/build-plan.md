@@ -384,17 +384,19 @@ Tasks marked **⚠ research needed** depend on facts about Anarlog's webhook con
 
 ## Phase 10 — Harness API
 
-### T050 — FastAPI scaffold + `GET /knowledge/{id}` (no auth yet)
+### T050 — FastAPI scaffold + `GET /knowledge/{id}` (no auth yet) ✅ COMPLETE
 **Goal:** First read endpoint.
 **Start:** T038.
 **Do:** Scaffold `apps/harness-api` with this one route, calling `openviking_client.get_knowledge_by_id()`.
 **Test:** Integration test seeds a record via the client, GETs it through the API, asserts the JSON matches.
+**Status:** Done - first real, curlable endpoint: `GET /knowledge/{id}` returns the record as JSON (via `response_model=KnowledgeRecord`) or `404`. `RealOpenVikingClient` is created fresh per request (same event-loop-safety pattern as ingestion-service, T047) via a FastAPI dependency that closes it afterward. No auth yet - that's T051.
 
-### T051 — Supabase JWT auth dependency
+### T051 — Supabase JWT auth dependency ✅ COMPLETE
 **Goal:** Protect routes for logged-in web users.
 **Start:** T050.
 **Do:** Add a FastAPI dependency `get_current_user()` that verifies the `Authorization: Bearer <token>` header against Supabase's JWT secret/JWKS, and apply it to `GET /knowledge/{id}`.
 **Test:** Integration test with no token gets 401; with a valid Supabase-issued token (generated via the Supabase Auth admin API in the test setup) gets 200.
+**Status:** Done. `harness_api.auth.get_current_user()` verifies via `PyJWKClient` against Supabase's JWKS endpoint, not a static secret - confirmed live (`curl .../.well-known/jwks.json`) that this project's local Supabase instance is on the newer **ES256 asymmetric JWT Signing Keys** system, not the legacy shared HS256 secret `docs/architecture.md` had hedged as one of two possibilities. `GET /knowledge/{id}` now requires a valid bearer token; test creates a real, email-confirmed user via the Supabase Auth admin API and signs them in for a real access token (no hand-crafted JWTs). Full suite green (75 passed) once the pre-existing Ollama/OpenViking contention issue is worked around (`docker compose down` in `infra/`) - see `infra/README.md`, real fix tracked separately, not blocking.
 
 ### T052 — Static API key auth dependency (for service callers)
 **Goal:** Let non-user services (like `mcp-server`) call the API too.
