@@ -295,15 +295,16 @@ Tasks marked **⚠ research needed** depend on facts about Anarlog's webhook con
 
 ## Phase 7 — Context comparison refinement
 
-### T040 — Similarity-based retrieval
+### T040 — Similarity-based retrieval ⏸ DEFERRED (see ADR-0007)
 **Goal:** Retrieve semantically related knowledge, not just exact topic string matches.
 **Start:** T036 (or T027 if still on fakes).
 **Do:** Update the Retrieve step to use embedding similarity with a configurable threshold.
 **Test:** Integration test with two differently-worded but semantically related topics asserts both are retrieved above the threshold.
+**Status:** Deferred. `docs/decisions/0007-topic-retrieval-exact-match.md` decided to ship exact-match topic retrieval (built in T036) and evaluate this only once real meeting data (post-Phase-9/Anarlog) shows topic-name drift is an actual, frequent problem rather than a theoretical one. Revisit this task then, not before.
 
 ### T041 — "No existing knowledge" path
 **Goal:** Handle the first-ever mention of a topic cleanly.
-**Start:** T040.
+**Start:** T036 (not T040 - this doesn't depend on similarity search, only on retrieval returning empty, which exact-match retrieval already does correctly).
 **Do:** When retrieval returns nothing, skip Compare and classify the candidate as new with no `supersedes` link.
 **Test:** Unit test with an empty retrieval result asserts the written record has `supersedes: null`.
 

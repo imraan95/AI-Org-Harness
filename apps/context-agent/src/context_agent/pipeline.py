@@ -37,12 +37,20 @@ async def _compare(
 ) -> list[tuple[dict[str, Any], list[KnowledgeRecord], str]]:
     """For each candidate, classify its relationship to existing knowledge as
     one of: new, corroborating, superseding, contradicting.
+
+    When there's no existing knowledge on the topic (T041), the answer is
+    "new" by definition - there's nothing to compare against, so this
+    skips the LLM call entirely rather than asking a model to compare a
+    candidate against an empty list.
     """
     results: list[tuple[dict[str, Any], list[KnowledgeRecord], str]] = []
     for candidate, existing in candidates_with_existing:
-        relationship = await llm.compare(
-            candidate, [record.model_dump() for record in existing]
-        )
+        if not existing:
+            relationship = "new"
+        else:
+            relationship = await llm.compare(
+                candidate, [record.model_dump() for record in existing]
+            )
         results.append((candidate, existing, relationship))
     return results
 

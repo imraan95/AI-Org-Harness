@@ -70,14 +70,21 @@ async def test_retrieve_returns_existing_knowledge_for_matching_topic():
     assert existing[0].id == existing_record.id
 
 
-async def test_compare_returns_new_when_llm_says_new():
+async def test_compare_returns_new_without_calling_llm_when_no_existing_knowledge():
+    """T041: nothing to compare against means "new" by definition - no LLM
+    call needed (and none made, since OllamaLLM.compare isn't even wired up
+    yet - see llm_router/ollama.py)."""
     fake_llm = FakeLLM()
-    fake_llm.set_next_compare_result("new")
+    # Deliberately not setting a canned compare result: if the pipeline
+    # called llm.compare() here, this test would still "pass" on the
+    # empty-string default, silently masking the bug T041 fixes. The real
+    # assertion is that compare_calls stays empty.
     candidate = {"topic": "enterprise_sso", "statement": "..."}
 
     results = await _compare(fake_llm, [(candidate, [])])
 
     assert results == [(candidate, [], "new")]
+    assert fake_llm.compare_calls == []
 
 
 async def test_compare_returns_corroborating_when_llm_says_corroborating():
@@ -216,3 +223,20 @@ async def test_process_transcript_returns_empty_list_when_nothing_extracted():
     result = await process_transcript(_transcript(), fake_llm, client)
 
     assert result == []
+
+
+async def test_first_ever_mention_of_a_topic_is_written_with_no_supersedes_link():
+    """T041: a brand-new topic (nothing in OpenViking about it yet) should
+    be written cleanly as new knowledge, with no `supersedes` link."""
+    fake_llm = FakeLLM()
+    fake_llm.set_next_extract_result(
+        [{"topic": "brand_new_topic", "statement": "Something nobody has said before."}]
+    )
+    fake_llm.set_next_classify_result("fact")
+    client = FakeOpenVikingClient()  # nothing seeded - retrieval will be empty
+
+    written = await process_transcript(_transcript(), fake_llm, client)
+
+    assert len(written) == 1
+    assert written[0].supersedes is None
+    assert fake_llm.compare_calls == []
