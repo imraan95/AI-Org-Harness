@@ -318,11 +318,12 @@ Tasks marked **⚠ research needed** depend on facts about Anarlog's webhook con
 **Do:** When Compare returns "contradicts," write a conflict record linking both knowledge ids with `status: pending`, instead of writing a superseding record.
 **Test:** Unit test with `FakeLLM`/real LLM returning "contradicts" asserts a conflict record is created referencing both ids.
 
-### T043 — No auto-resolution guard
+### T043 — No auto-resolution guard ⏸ DEFERRED to Phase 10 (T055/T056)
 **Goal:** Guarantee the system never resolves a conflict on its own.
 **Start:** T042.
 **Do:** Add an explicit invariant check that no code path outside the human-review write path (T054/T055) sets a conflict's status to `resolved`/`dismissed`.
 **Test:** Unit test attempts to call the internal write function with `status: resolved` from pipeline code and asserts it's rejected/raises.
+**Status:** Deferred. There is no code path today that resolves a conflict at all - the only real caller of that would be `harness-api`'s approve/reject endpoints (T055/T056), which don't exist until Phase 10. Building a guard now would only be testing against code that doesn't exist yet. Build the actual guard as part of T055/T056, where the real risk lives.
 
 ---
 
