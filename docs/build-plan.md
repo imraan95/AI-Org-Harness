@@ -366,11 +366,12 @@ Tasks marked **⚠ research needed** depend on facts about Anarlog's webhook con
 **Test:** Integration test POSTs a fixture payload, then queries the `jobs` table and asserts one pending job references the correct transcript id.
 **Status:** Done. Also fixed a real bug this surfaced: `OllamaLLM`/the DB session factory were module-level singletons in `main.py`, which broke under pytest's per-test event loops ("Event loop is closed") - now created fresh per request (documented cost: not free under real load, revisit if ingestion-service needs throughput). Also found and fixed real test pollution: `dequeue_job()` claims the globally-oldest `pending` job, so any test that enqueues one and doesn't clean up breaks `libs/db/tests/test_jobs.py` (and itself, if it ever fails before reaching its own cleanup line - which is exactly what happened and required a manual `DELETE FROM jobs` to recover from). All ingestion-service tests that enqueue a job now mark it done before finishing.
 
-### T048 — Context-agent worker loop
+### T048 — Context-agent worker loop ✅ COMPLETE
 **Goal:** Actually process queued jobs.
 **Start:** T047, T038.
 **Do:** Add a polling loop (or a simple worker function callable on demand for tests) in `apps/context-agent` that dequeues `transcript.ingested` jobs and calls `process_transcript()` with the corresponding transcript.
 **Test:** End-to-end test: POST a fixture payload to ingestion-service, run the worker once, assert a knowledge record for that content exists in OpenViking.
+**Status:** Done, as an on-demand `run_worker_once()` (no standing polling loop yet - a real deployment would need one, but nothing calls this outside tests today). This is the full pipeline working end to end for the first time: real Anarlog webhook shape → ingestion-service → Supabase → job queue → context-agent worker → real OpenViking. Surfaced and fixed a genuine, previously-hidden bug in T036's `RealOpenVikingClient.get_relevant_knowledge()` (and defensively in `_find_uri_by_id`/`list_conflicts` too): OpenViking's `search/glob`/`search/grep` return `404` when the target directory doesn't exist yet, which every prior test avoided by always writing a record before searching for one - but a real brand-new topic (the normal case, not an edge case) hit it immediately. All three now treat `404` as "no matches" rather than raising.
 
 ### T049 — Webhook signature verification
 **Goal:** Reject payloads that aren't genuinely from Anarlog.

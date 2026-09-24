@@ -100,6 +100,11 @@ class RealOpenVikingClient(OpenVikingClient):
             "/api/v1/search/glob",
             json={"pattern": f"**/{knowledge_id}.json", "uri": KNOWLEDGE_ROOT},
         )
+        if glob_response.status_code == 404:
+            # KNOWLEDGE_ROOT itself doesn't exist yet - nothing has ever
+            # been written. Same "no matches" case as any other empty
+            # glob, not an error.
+            return None
         result = self._unwrap(glob_response)
         matches = result.get("matches", [])
         return matches[0] if matches else None
@@ -132,6 +137,11 @@ class RealOpenVikingClient(OpenVikingClient):
                 "uri": f"{KNOWLEDGE_ROOT}/{_topic_slug(topic)}",
             },
         )
+        if glob_response.status_code == 404:
+            # This topic's directory doesn't exist yet - nobody has ever
+            # written to it, which is the normal "brand new topic" case
+            # (T041), not an error. Zero existing records, not a failure.
+            return []
         result = self._unwrap(glob_response)
         matches = result.get("matches", [])
         return [await self._read_record(uri) for uri in matches]
@@ -149,6 +159,10 @@ class RealOpenVikingClient(OpenVikingClient):
                 "pattern": '"status":\\s*"conflicting"',
             },
         )
+        if grep_response.status_code == 404:
+            # Same "nothing written yet" case as get_relevant_knowledge -
+            # zero conflicts, not an error.
+            return []
         result = self._unwrap(grep_response)
         # A file could in principle match on more than one line; dedupe by
         # uri while preserving order.
