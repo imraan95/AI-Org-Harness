@@ -2,7 +2,12 @@
 name = "openviking-client"
 version = "0.1.0"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "knowledge-model",
+]
+
+[tool.uv.sources]
+knowledge-model = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
