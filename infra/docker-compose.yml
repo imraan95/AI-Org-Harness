@@ -1,0 +1,32 @@
+# Local dev: the vendored OpenViking service (see vendor/openviking, pinned to v0.4.21).
+# Based on vendor/openviking/docker-compose.yml, trimmed to what we need for local dev:
+# no Caddy reverse proxy (we don't need public HTTPS), no VikingBot.
+#
+# NOTE (open item, T034): the image tag below is `latest`, not pinned to v0.4.21.
+# OpenViking's Docker image tags (v0.4.14.2, v0.4.16.dev1, ...) don't line up with its
+# git release tags 1:1, and no image tag matching v0.4.21 could be confirmed to exist
+# at the time this was written. Revisit before this goes anywhere beyond local dev.
+#
+# Run from repo root: docker compose -f infra/docker-compose.yml up -d
+# Health check once running: curl http://localhost:1933/health
+
+services:
+  openviking:
+    image: ghcr.io/volcengine/openviking:latest
+    container_name: org-harness-openviking
+    ports:
+      - "1933:1933"
+    volumes:
+      - openviking_data:/app/.openviking
+    environment:
+      OPENVIKING_SERVER_PORT: "1933"
+    healthcheck:
+      test: ["CMD", "openviking-entrypoint", "--healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  openviking_data:

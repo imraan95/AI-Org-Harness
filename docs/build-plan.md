@@ -258,8 +258,8 @@ Tasks marked **⚠ research needed** depend on facts about Anarlog's webhook con
 ### T034 — OpenViking container in docker-compose
 **Goal:** A runnable local OpenViking instance, separate from Supabase.
 **Start:** T033.
-**Do:** Add its service (own container, own Postgres+pgvector instance) to `infra/docker-compose.yml`.
-**Test:** `docker compose up openviking` starts; its health check or logs show "ready."
+**Do:** Add its service (own container, own internal storage — confirmed by S1 to be a file/vector store, not Postgres) to `infra/docker-compose.yml`.
+**Test:** `docker compose -f infra/docker-compose.yml up openviking` starts; `curl http://localhost:1933/health` returns `{"status": "ok", ...}`.
 
 ### T035 — Real client: `write_knowledge` + `get_knowledge_by_id`
 **Goal:** First real calls against the running fork.
