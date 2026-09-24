@@ -1,5 +1,8 @@
 """T046: persisting real Anarlog events (and only real events) on receipt."""
 
+import hashlib
+import hmac
+import json
 import uuid
 
 from db import (
@@ -13,7 +16,23 @@ from db import (
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from ingestion_service.main import app
+from ingestion_service.main import ANARLOG_WEBHOOK_SECRET, app
+
+
+def _signed_post(client: TestClient, payload: dict):
+    body = json.dumps(payload).encode()
+    signature = (
+        "sha256="
+        + hmac.new(ANARLOG_WEBHOOK_SECRET.encode(), body, hashlib.sha256).hexdigest()
+    )
+    return client.post(
+        "/webhooks/anarlog",
+        content=body,
+        headers={
+            "content-type": "application/json",
+            "x-anarlog-signature": signature,
+        },
+    )
 
 
 def _note_enhanced_payload(meeting_id: str) -> dict:
@@ -39,9 +58,7 @@ async def test_note_enhanced_webhook_persists_transcript_and_chunks():
     meeting_id = f"test-meeting-{uuid.uuid4()}"
     client = TestClient(app)
 
-    response = client.post(
-        "/webhooks/anarlog", json=_note_enhanced_payload(meeting_id)
-    )
+    response = _signed_post(client, _note_enhanced_payload(meeting_id))
 
     assert response.status_code == 200
 
@@ -78,7 +95,7 @@ async def test_meeting_completed_webhook_is_acknowledged_but_not_persisted():
     payload["event"] = "meeting.completed"
     client = TestClient(app)
 
-    response = client.post("/webhooks/anarlog", json=payload)
+    response = _signed_post(client, payload)
 
     assert response.status_code == 200
 
@@ -94,9 +111,9 @@ async def test_meeting_completed_webhook_is_acknowledged_but_not_persisted():
 async def test_webhook_test_event_is_acknowledged_but_not_persisted():
     client = TestClient(app)
 
-    response = client.post(
-        "/webhooks/anarlog",
-        json={
+    response = _signed_post(
+        client,
+        {
             "id": f"evt_{uuid.uuid4().hex}",
             "event": "webhook.test",
             "created_at": "2026-09-24T06:45:53.265Z",

@@ -8,6 +8,9 @@ set, same as libs/openviking_client/tests/test_real_integration.py.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import os
 import uuid
 
@@ -19,7 +22,23 @@ from llm_router import FakeLLM
 from openviking_client import FakeOpenVikingClient, RealOpenVikingClient
 
 from context_agent import run_worker_once
-from ingestion_service.main import app
+from ingestion_service.main import ANARLOG_WEBHOOK_SECRET, app
+
+
+def _signed_post(client: TestClient, payload: dict):
+    body = json.dumps(payload).encode()
+    signature = (
+        "sha256="
+        + hmac.new(ANARLOG_WEBHOOK_SECRET.encode(), body, hashlib.sha256).hexdigest()
+    )
+    return client.post(
+        "/webhooks/anarlog",
+        content=body,
+        headers={
+            "content-type": "application/json",
+            "x-anarlog-signature": signature,
+        },
+    )
 
 OPENVIKING_BASE_URL = os.environ.get("OPENVIKING_BASE_URL", "http://127.0.0.1:1933")
 
@@ -90,9 +109,7 @@ async def test_worker_processes_a_webhook_ingested_transcript_into_openviking():
     meeting_id = f"test-meeting-{uuid.uuid4()}"
 
     client = TestClient(app)
-    response = client.post(
-        "/webhooks/anarlog", json=_note_enhanced_payload(meeting_id, topic_hint)
-    )
+    response = _signed_post(client, _note_enhanced_payload(meeting_id, topic_hint))
     assert response.status_code == 200
 
     fake_llm = FakeLLM()

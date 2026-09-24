@@ -373,11 +373,12 @@ Tasks marked **⚠ research needed** depend on facts about Anarlog's webhook con
 **Test:** End-to-end test: POST a fixture payload to ingestion-service, run the worker once, assert a knowledge record for that content exists in OpenViking.
 **Status:** Done, as an on-demand `run_worker_once()` (no standing polling loop yet - a real deployment would need one, but nothing calls this outside tests today). This is the full pipeline working end to end for the first time: real Anarlog webhook shape → ingestion-service → Supabase → job queue → context-agent worker → real OpenViking. Surfaced and fixed a genuine, previously-hidden bug in T036's `RealOpenVikingClient.get_relevant_knowledge()` (and defensively in `_find_uri_by_id`/`list_conflicts` too): OpenViking's `search/glob`/`search/grep` return `404` when the target directory doesn't exist yet, which every prior test avoided by always writing a record before searching for one - but a real brand-new topic (the normal case, not an edge case) hit it immediately. All three now treat `404` as "no matches" rather than raising.
 
-### T049 — Webhook signature verification
+### T049 — Webhook signature verification ✅ COMPLETE
 **Goal:** Reject payloads that aren't genuinely from Anarlog.
 **Start:** T048; Anarlog's real auth scheme confirmed.
 **Do:** Add signature/token verification per Anarlog's documented scheme.
 **Test:** Integration test with a bad signature is rejected (401/403); with a valid one, proceeds as in T048.
+**Status:** Done. `ingestion_service.verify_signature()` checks the HMAC-SHA256 `x-anarlog-signature` header against a single shared `ANARLOG_WEBHOOK_SECRET` (env var, falls back to a hardcoded dev placeholder so tests need no extra setup - same pattern as OpenViking's root-key placeholder). All prior tests that POST to the webhook endpoint were updated to sign their requests. **Real consequence, not just tests**: from now on, re-testing against a real Anarlog webhook (as done live for S2) requires setting `ANARLOG_WEBHOOK_SECRET` to the actual `whsec_...` secret copied when the endpoint was registered in Anarlog's Settings, or the real request gets rejected too. Explicitly out of scope here, still flagged from S2/T046: per-employee secrets (one shared secret today, not per-RMS-user) and replay/dedup protection on retried deliveries.
 
 ---
 

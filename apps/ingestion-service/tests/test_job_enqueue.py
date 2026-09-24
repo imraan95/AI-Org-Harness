@@ -1,12 +1,31 @@
 """T047: enqueueing a transcript.ingested job on webhook receipt."""
 
+import hashlib
+import hmac
+import json
 import uuid
 
 from db import JobRow, get_engine, get_session_factory, mark_job_done
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from ingestion_service.main import app
+from ingestion_service.main import ANARLOG_WEBHOOK_SECRET, app
+
+
+def _signed_post(client: TestClient, payload: dict):
+    body = json.dumps(payload).encode()
+    signature = (
+        "sha256="
+        + hmac.new(ANARLOG_WEBHOOK_SECRET.encode(), body, hashlib.sha256).hexdigest()
+    )
+    return client.post(
+        "/webhooks/anarlog",
+        content=body,
+        headers={
+            "content-type": "application/json",
+            "x-anarlog-signature": signature,
+        },
+    )
 
 
 def _note_enhanced_payload(meeting_id: str) -> dict:
@@ -32,9 +51,7 @@ async def test_note_enhanced_webhook_enqueues_a_pending_job():
     meeting_id = f"test-meeting-{uuid.uuid4()}"
     client = TestClient(app)
 
-    response = client.post(
-        "/webhooks/anarlog", json=_note_enhanced_payload(meeting_id)
-    )
+    response = _signed_post(client, _note_enhanced_payload(meeting_id))
 
     assert response.status_code == 200
 

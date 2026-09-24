@@ -1,13 +1,13 @@
 """T044: ingestion-service scaffold. T046: persist real events to Supabase.
 T047: enqueue a transcript.ingested job for context-agent to pick up.
-
-No signature verification yet - that's T049.
+T049: verify the webhook's signature before doing anything else with it.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import os
 
 from db import (
     enqueue_job,
@@ -15,12 +15,22 @@ from db import (
     insert_transcript,
     insert_transcript_chunks,
 )
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from llm_router import OllamaLLM
 
 from .normalise import build_transcript_chunks, normalise_anarlog_payload
+from .signature import verify_signature
 
 logger = logging.getLogger(__name__)
+
+# A real deployment MUST override this via env var, to the actual
+# `whsec_...` secret copied from Anarlog's Settings -> Developers ->
+# Webhooks page when the endpoint was registered - this placeholder only
+# exists so local tests (which sign with the same fallback) work without
+# extra setup. Same pattern as infra/openviking-config/ov.conf's root key.
+ANARLOG_WEBHOOK_SECRET = os.environ.get(
+    "ANARLOG_WEBHOOK_SECRET", "dev-secret-placeholder-changeme"
+)
 
 # Without this, our INFO-level logs are silently dropped when run for real
 # (python defaults the root logger to WARNING) - uvicorn only configures its
@@ -47,6 +57,13 @@ _PERSISTABLE_EVENTS = {"note.enhanced"}
 @app.post("/webhooks/anarlog")
 async def receive_anarlog_webhook(request: Request) -> dict[str, str]:
     body = await request.body()
+
+    if not verify_signature(
+        ANARLOG_WEBHOOK_SECRET, body, request.headers.get("x-anarlog-signature")
+    ):
+        logger.warning("Rejected Anarlog webhook: invalid or missing signature")
+        raise HTTPException(status_code=401, detail="invalid signature")
+
     logger.info(
         "Received Anarlog webhook payload (%d bytes): %s",
         len(body),
