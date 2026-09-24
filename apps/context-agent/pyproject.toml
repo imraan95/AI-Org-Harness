@@ -2,7 +2,18 @@
 name = "context-agent"
 version = "0.1.0"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "shared-schemas",
+    "llm-router",
+    "openviking-client",
+    "knowledge-model",
+]
+
+[tool.uv.sources]
+shared-schemas = { workspace = true }
+llm-router = { workspace = true }
+openviking-client = { workspace = true }
+knowledge-model = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

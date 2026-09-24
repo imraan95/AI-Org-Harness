@@ -138,6 +138,20 @@ wheels = [
 name = "context-agent"
 version = "0.1.0"
 source = { editable = "apps/context-agent" }
+dependencies = [
+    { name = "knowledge-model" },
+    { name = "llm-router" },
+    { name = "openviking-client" },
+    { name = "shared-schemas" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "knowledge-model", editable = "libs/knowledge_model" },
+    { name = "llm-router", editable = "libs/llm_router" },
+    { name = "openviking-client", editable = "libs/openviking_client" },
+    { name = "shared-schemas", editable = "libs/shared_schemas" },
+]
 
 [[package]]
 name = "db"
