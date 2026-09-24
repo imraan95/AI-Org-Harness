@@ -1,4 +1,4 @@
-"""Integration tests against a REAL, running OpenViking service (T035, T036).
+"""Integration tests against a REAL, running OpenViking service (T035-T037).
 
 Unlike every other test in this repo, this one is NOT a fake/unit test - it
 makes real HTTP calls to the container started in infra/docker-compose.yml.
@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 import httpx
 import pytest
 
-from knowledge_model import KnowledgeRecord
+from knowledge_model import KnowledgeRecord, KnowledgeStatus
 from openviking_client import RealOpenVikingClient
 
 BASE_URL = os.environ.get("OPENVIKING_BASE_URL", "http://127.0.0.1:1933")
@@ -41,7 +41,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def _knowledge_record(
-    *, topic: str = "enterprise_sso", statement: str = "..."
+    *, topic: str = "enterprise_sso", statement: str = "...", status: str = "active"
 ) -> KnowledgeRecord:
     now = datetime.now(timezone.utc)
     return KnowledgeRecord(
@@ -49,7 +49,7 @@ def _knowledge_record(
         type="customer_insight",
         topic=topic,
         statement=statement,
-        status="active",
+        status=status,
         confidence=0.6,
         source_ids=["meeting_test"],
         people=[],
@@ -100,5 +100,46 @@ async def test_get_relevant_knowledge_returns_only_the_matching_topic():
 
     assert [r.id for r in results] == [record_a.id]
     assert results[0] == record_a
+
+    await client.aclose()
+
+
+async def test_list_conflicts_includes_conflicting_records():
+    run_id = uuid.uuid4().hex[:8]
+    client = RealOpenVikingClient()
+    conflict_1 = _knowledge_record(
+        topic=f"conflict_a_{run_id}", statement="Version A.", status="conflicting"
+    )
+    conflict_2 = _knowledge_record(
+        topic=f"conflict_b_{run_id}", statement="Version B.", status="conflicting"
+    )
+
+    await client.write_knowledge(conflict_1)
+    await client.write_knowledge(conflict_2)
+
+    conflicts = await client.list_conflicts()
+    conflict_ids = {r.id for r in conflicts}
+
+    # "confirms both appear" (build-plan T037) - not an exact-length
+    # assertion, since this container's storage persists across test runs
+    # and may hold conflicting records from earlier runs too.
+    assert {conflict_1.id, conflict_2.id}.issubset(conflict_ids)
+    assert all(r.status == KnowledgeStatus.CONFLICTING for r in conflicts)
+
+    await client.aclose()
+
+
+async def test_update_knowledge_status_persists():
+    client = RealOpenVikingClient()
+    record = _knowledge_record(topic=f"status_update_{uuid.uuid4().hex[:8]}")
+    await client.write_knowledge(record)
+
+    await client.update_knowledge_status(record.id, KnowledgeStatus.SUPERSEDED)
+    refetched = await client.get_knowledge_by_id(record.id)
+
+    assert refetched is not None
+    assert refetched.status == KnowledgeStatus.SUPERSEDED
+    # Everything else about the record should be untouched.
+    assert refetched.model_copy(update={"status": record.status}) == record
 
     await client.aclose()

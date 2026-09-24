@@ -40,10 +40,9 @@ class RealOpenVikingClient(OpenVikingClient):
     and read back the same way - OpenViking is used purely as a
     semantic-searchable file store, not as a second extraction pipeline.
 
-    `write_knowledge`, `get_knowledge_by_id` (T035), and
-    `get_relevant_knowledge` (T036) are implemented here.
-    `list_conflicts`/`update_knowledge_status` (T037) are implemented in
-    a later task.
+    Implements the full `OpenVikingClient` interface: `write_knowledge`,
+    `get_knowledge_by_id` (T035), `get_relevant_knowledge` (T036), and
+    `list_conflicts`/`update_knowledge_status` (T037).
     """
 
     def __init__(
@@ -96,20 +95,27 @@ class RealOpenVikingClient(OpenVikingClient):
             response = await self._client.post("/api/v1/content/write", json=payload)
         self._unwrap(response)
 
-    async def get_knowledge_by_id(self, knowledge_id: str) -> KnowledgeRecord | None:
+    async def _find_uri_by_id(self, knowledge_id: str) -> str | None:
         glob_response = await self._client.post(
             "/api/v1/search/glob",
             json={"pattern": f"**/{knowledge_id}.json", "uri": KNOWLEDGE_ROOT},
         )
         result = self._unwrap(glob_response)
         matches = result.get("matches", [])
-        if not matches:
-            return None
+        return matches[0] if matches else None
+
+    async def _read_record(self, uri: str) -> KnowledgeRecord:
         read_response = await self._client.get(
-            "/api/v1/content/read", params={"uri": matches[0]}
+            "/api/v1/content/read", params={"uri": uri}
         )
         raw_json = self._unwrap(read_response)
         return KnowledgeRecord.model_validate_json(raw_json)
+
+    async def get_knowledge_by_id(self, knowledge_id: str) -> KnowledgeRecord | None:
+        uri = await self._find_uri_by_id(knowledge_id)
+        if uri is None:
+            return None
+        return await self._read_record(uri)
 
     async def get_relevant_knowledge(self, topic: str) -> list[KnowledgeRecord]:
         # Every record for a topic lives under one directory we control
@@ -128,27 +134,49 @@ class RealOpenVikingClient(OpenVikingClient):
         )
         result = self._unwrap(glob_response)
         matches = result.get("matches", [])
-
-        records: list[KnowledgeRecord] = []
-        for uri in matches:
-            read_response = await self._client.get(
-                "/api/v1/content/read", params={"uri": uri}
-            )
-            raw_json = self._unwrap(read_response)
-            records.append(KnowledgeRecord.model_validate_json(raw_json))
-        return records
+        return [await self._read_record(uri) for uri in matches]
 
     async def list_conflicts(self) -> list[KnowledgeRecord]:
-        raise NotImplementedError(
-            "RealOpenVikingClient.list_conflicts is built in T037"
+        # grep searches file CONTENT (unlike glob, which matches paths), so
+        # this finds every record with status "conflicting" regardless of
+        # which topic directory it lives under - there's no server-side
+        # "query by field value" endpoint, so a content-pattern search is
+        # the closest real capability to that.
+        grep_response = await self._client.post(
+            "/api/v1/search/grep",
+            json={
+                "uri": KNOWLEDGE_ROOT,
+                "pattern": '"status":\\s*"conflicting"',
+            },
         )
+        result = self._unwrap(grep_response)
+        # A file could in principle match on more than one line; dedupe by
+        # uri while preserving order.
+        seen: dict[str, None] = {}
+        for match in result.get("matches", []):
+            seen.setdefault(match["uri"], None)
+        return [await self._read_record(uri) for uri in seen]
 
     async def update_knowledge_status(
         self, knowledge_id: str, status: KnowledgeStatus
     ) -> None:
-        raise NotImplementedError(
-            "RealOpenVikingClient.update_knowledge_status is built in T037"
+        uri = await self._find_uri_by_id(knowledge_id)
+        if uri is None:
+            # Matches FakeOpenVikingClient's behaviour: silently a no-op
+            # for an unknown id, rather than raising.
+            return
+        record = await self._read_record(uri)
+        updated = record.model_copy(update={"status": status})
+        response = await self._client.post(
+            "/api/v1/content/write",
+            json={
+                "uri": uri,
+                "content": updated.model_dump_json(),
+                "mode": "replace",
+                "wait": False,
+            },
         )
+        self._unwrap(response)
 
     async def aclose(self) -> None:
         await self._client.aclose()
