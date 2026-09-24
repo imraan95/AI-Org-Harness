@@ -285,11 +285,11 @@ Tasks marked **⚠ research needed** depend on facts about Anarlog's webhook con
 **Do:** Wire dependency injection so `context-agent`'s dev entrypoint uses the real `OpenVikingClient`; unit tests continue to inject `FakeOpenVikingClient`.
 **Test:** Re-run `scripts/seed.py` against the real running container; confirm the knowledge record is queryable directly from OpenViking after the script runs.
 
-### T039 — Permissions scaffold patch (if needed)
-**Goal:** Add `workspace_id`/`source_id`/`visibility`/`owner`/`access_level` if upstream doesn't already model them.
-**Start:** T038; confirmed from research whether needed.
-**Do:** Add the local patch per `architecture.md` §4, scripted in `scripts/sync-openviking.sh` so it reapplies after a submodule update.
-**Test:** After applying and restarting the container, write a record with `workspace_id` set and confirm it round-trips through `get_knowledge_by_id`.
+### T039 — Permissions scaffold fields on `KnowledgeRecord`
+**Goal:** Add `workspace_id`/`source_id`/`visibility`/`owner`/`access_level` (PRD §18) so a real permissions model can be added later without a rewrite.
+**Start:** T038; resolved by S1/ADR-0003 that this is a field addition to our own model, not an OpenViking fork patch — OpenViking has no schema of its own to extend, we own the whole JSON payload.
+**Do:** Add the five fields to `KnowledgeRecord` (`libs/knowledge_model`) with sensible MVP defaults (`workspace_id="default"`, `source_id="unspecified"`, `visibility="internal"`, `owner=None`, `access_level="standard"`); not enforced anywhere yet, per PRD §18's "one trusted workspace, no complex RBAC" for MVP.
+**Test:** Write a record with `workspace_id` explicitly set via the real `OpenVikingClient` and confirm it round-trips through `get_knowledge_by_id`.
 
 ---
 

@@ -25,3 +25,11 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 addopts = "--import-mode=importlib"
+# Only collect our own code. vendor/openviking (added in T033) carries its
+# own full test suite with its own dependencies we never install (loguru,
+# typer, fastapi, etc. - we don't run upstream's tests, only our own
+# integration tests against its running HTTP API) - without this, a plain
+# `pytest`/`uv run pytest` recurses into vendor/ and fails on missing
+# imports that have nothing to do with our code.
+testpaths = ["apps", "libs", "scripts"]
+norecursedirs = ["vendor", ".venv", "node_modules", ".git"]

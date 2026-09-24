@@ -37,3 +37,31 @@ def test_missing_required_field_raises_validation_error():
     del kwargs["topic"]
     with pytest.raises(ValidationError):
         KnowledgeRecord(**kwargs)
+
+
+def test_permissions_scaffold_fields_have_mvp_defaults():
+    """PRD §18: every record carries these even though MVP doesn't enforce
+    them yet (T039)."""
+    record = KnowledgeRecord(**_valid_kwargs())
+    assert record.workspace_id == "default"
+    assert record.source_id == "unspecified"
+    assert record.visibility == "internal"
+    assert record.owner is None
+    assert record.access_level == "standard"
+
+
+def test_permissions_scaffold_fields_can_be_overridden():
+    record = KnowledgeRecord(
+        **_valid_kwargs(
+            workspace_id="acme",
+            source_id="anarlog",
+            visibility="confidential",
+            owner="person_12",
+            access_level="restricted",
+        )
+    )
+    assert record.workspace_id == "acme"
+    assert record.source_id == "anarlog"
+    assert record.visibility == "confidential"
+    assert record.owner == "person_12"
+    assert record.access_level == "restricted"

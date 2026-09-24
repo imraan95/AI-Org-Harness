@@ -129,6 +129,30 @@ async def test_list_conflicts_includes_conflicting_records():
     await client.aclose()
 
 
+async def test_permissions_scaffold_fields_round_trip():
+    """T039: workspace_id/etc. are just ordinary KnowledgeRecord fields now
+    (ADR 0003) - confirm they survive a real write/read cycle like any
+    other field."""
+    client = RealOpenVikingClient()
+    record = _knowledge_record(topic=f"perm_scaffold_{uuid.uuid4().hex[:8]}")
+    record = record.model_copy(
+        update={
+            "workspace_id": "acme",
+            "source_id": "anarlog",
+            "visibility": "confidential",
+            "owner": "person_12",
+            "access_level": "restricted",
+        }
+    )
+
+    await client.write_knowledge(record)
+    fetched = await client.get_knowledge_by_id(record.id)
+
+    assert fetched == record
+
+    await client.aclose()
+
+
 async def test_update_knowledge_status_persists():
     client = RealOpenVikingClient()
     record = _knowledge_record(topic=f"status_update_{uuid.uuid4().hex[:8]}")

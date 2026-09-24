@@ -22,3 +22,14 @@ class KnowledgeRecord(BaseModel):
     observed_at: datetime
     last_updated_at: datetime
     supersedes: str | None = None
+
+    # Permissions scaffold (PRD §18): "one trusted workspace, no complex
+    # RBAC" for MVP, but every record carries these so a real permissions
+    # model can be added later without a rewrite. Not enforced anywhere
+    # yet - see build-plan T039 and ADR 0003 (OpenViking has no schema of
+    # its own to patch; this scaffold lives entirely in our own model).
+    workspace_id: str = "default"
+    source_id: str = "unspecified"
+    visibility: str = "internal"
+    owner: str | None = None
+    access_level: str = "standard"
