@@ -1,0 +1,37 @@
+import httpx
+import pytest
+
+from llm_router.ollama import DEFAULT_OLLAMA_BASE_URL, OllamaLLM
+
+
+def _ollama_available() -> bool:
+    try:
+        response = httpx.get(f"{DEFAULT_OLLAMA_BASE_URL}/api/tags", timeout=1.0)
+        return response.status_code == 200
+    except httpx.HTTPError:
+        return False
+
+
+pytestmark = pytest.mark.skipif(
+    not _ollama_available(), reason="Ollama is not running locally"
+)
+
+
+async def test_extract_returns_expected_fields():
+    llm = OllamaLLM()
+    result = await llm.extract(
+        "Alice: Three enterprise customers have asked for SSO this quarter."
+    )
+    assert isinstance(result, list)
+    assert len(result) >= 1
+    assert "topic" in result[0]
+    assert "statement" in result[0]
+
+
+async def test_classify_returns_one_of_the_given_categories():
+    llm = OllamaLLM()
+    result = await llm.classify(
+        "We decided to ship SSO in November.",
+        ["decision", "fact", "hypothesis"],
+    )
+    assert result in ["decision", "fact", "hypothesis"]
