@@ -1,4 +1,4 @@
-insert into jobs (type, payload)
-values ('transcript.ingested', '{"transcript_id": "meeting_test"}'::jsonb);
+insert into ingestion_events (source, payload)
+values ('anarlog', '{"raw": "example webhook payload"}'::jsonb);
 
-select * from jobs;
+select * from ingestion_events;
