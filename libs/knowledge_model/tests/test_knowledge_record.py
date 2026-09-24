@@ -65,3 +65,22 @@ def test_permissions_scaffold_fields_can_be_overridden():
     assert record.visibility == "confidential"
     assert record.owner == "person_12"
     assert record.access_level == "restricted"
+
+
+def test_conflicts_with_defaults_to_empty_list():
+    record = KnowledgeRecord(**_valid_kwargs())
+    assert record.conflicts_with == []
+
+
+def test_conflicts_with_can_reference_other_record_ids():
+    record = KnowledgeRecord(**_valid_kwargs(conflicts_with=["K-00087"]))
+    assert record.conflicts_with == ["K-00087"]
+
+
+def test_conflicts_with_default_is_not_shared_between_instances():
+    """Pydantic deep-copies mutable defaults per instance - guard against a
+    regression to a shared-list bug (the classic plain-dataclass footgun)."""
+    a = KnowledgeRecord(**_valid_kwargs())
+    b = KnowledgeRecord(**_valid_kwargs())
+    a.conflicts_with.append("K-99999")
+    assert b.conflicts_with == []

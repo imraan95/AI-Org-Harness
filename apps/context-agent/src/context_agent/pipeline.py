@@ -82,19 +82,25 @@ async def _classify(
     return classified
 
 
-def _is_high_impact(
+def _determine_status(
     existing: list[KnowledgeRecord], relationship: str, confidence: float
-) -> bool:
-    """PRD §17: high-impact proposed updates require human review.
+) -> KnowledgeStatus:
+    """PRD §9/§17, build-plan T042: decide what status a newly-classified
+    candidate is written with.
 
-    High-impact here means: it contradicts existing active knowledge, or
-    it's low-confidence with nothing else corroborating it.
+    - Contradicts existing knowledge -> CONFLICTING. This is a distinct
+      status from PENDING_REVIEW (not just "high impact, needs review"),
+      so a contradiction is always an explicit conflict record - never
+      silently written as a superseding/active record, and never
+      resolved by anything in this module (T043).
+    - Low-confidence with nothing else corroborating it -> PENDING_REVIEW.
+    - Otherwise -> ACTIVE.
     """
     if relationship == "contradicting":
-        return True
+        return KnowledgeStatus.CONFLICTING
     if confidence_bucket(confidence) == "low" and not existing:
-        return True
-    return False
+        return KnowledgeStatus.PENDING_REVIEW
+    return KnowledgeStatus.ACTIVE
 
 
 async def _write(
@@ -102,9 +108,10 @@ async def _write(
 ) -> list[KnowledgeRecord]:
     """Persist each classified candidate to OpenViking.
 
-    High-impact changes are written as `pending_review` rather than
-    `active`, so a human approves them before they're treated as current
-    (PRD §17) - the system never auto-publishes those.
+    High-impact changes are written as `pending_review` or `conflicting`
+    rather than `active`, so a human approves/resolves them before
+    they're treated as current (PRD §17) - the system never
+    auto-publishes or auto-resolves those (T043).
     """
     written: list[KnowledgeRecord] = []
     for item in classified:
@@ -112,10 +119,11 @@ async def _write(
         relationship = item["relationship"]
         confidence = item["confidence"]
 
-        status = (
-            KnowledgeStatus.PENDING_REVIEW
-            if _is_high_impact(existing, relationship, confidence)
-            else KnowledgeStatus.ACTIVE
+        status = _determine_status(existing, relationship, confidence)
+        conflicts_with = (
+            [record.id for record in existing]
+            if status == KnowledgeStatus.CONFLICTING
+            else []
         )
 
         now = datetime.now(timezone.utc)
@@ -131,6 +139,7 @@ async def _write(
             created_at=now,
             observed_at=now,
             last_updated_at=now,
+            conflicts_with=conflicts_with,
         )
         await openviking.write_knowledge(record)
         written.append(record)

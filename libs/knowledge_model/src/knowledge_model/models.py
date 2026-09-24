@@ -23,6 +23,13 @@ class KnowledgeRecord(BaseModel):
     last_updated_at: datetime
     supersedes: str | None = None
 
+    # PRD §9/§17, build-plan T042: when Compare finds a candidate
+    # contradicts existing knowledge, it's written with
+    # status=CONFLICTING and this field populated with the id(s) of every
+    # existing record it contradicts - never silently overwritten or
+    # auto-resolved. Empty for every other status.
+    conflicts_with: list[str] = []
+
     # Permissions scaffold (PRD §18): "one trusted workspace, no complex
     # RBAC" for MVP, but every record carries these so a real permissions
     # model can be added later without a rewrite. Not enforced anywhere

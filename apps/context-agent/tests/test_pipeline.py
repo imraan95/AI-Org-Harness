@@ -144,6 +144,7 @@ async def test_classify_assigns_type_via_llm_and_confidence_via_rules():
 
 async def test_write_persists_records_with_correct_statuses_for_impact_level():
     client = FakeOpenVikingClient()
+    conflicting_existing = _knowledge_record()
     classified = [
         {
             "topic": "enterprise_sso",
@@ -155,8 +156,16 @@ async def test_write_persists_records_with_correct_statuses_for_impact_level():
         },
         {
             "topic": "enterprise_sso",
+            "statement": "Speculation nobody else has corroborated",
+            "existing": [],
+            "relationship": "new",
+            "type": "hypothesis",
+            "confidence": 0.3,
+        },
+        {
+            "topic": "enterprise_sso",
             "statement": "SSO not planned for Q4",
-            "existing": [_knowledge_record()],
+            "existing": [conflicting_existing],
             "relationship": "contradicting",
             "type": "decision",
             "confidence": 0.9,
@@ -165,9 +174,13 @@ async def test_write_persists_records_with_correct_statuses_for_impact_level():
 
     written = await _write(client, classified)
 
-    assert len(written) == 2
+    assert len(written) == 3
     assert written[0].status == KnowledgeStatus.ACTIVE
+    assert written[0].conflicts_with == []
     assert written[1].status == KnowledgeStatus.PENDING_REVIEW
+    assert written[1].conflicts_with == []
+    assert written[2].status == KnowledgeStatus.CONFLICTING
+    assert written[2].conflicts_with == [conflicting_existing.id]
 
     for record in written:
         fetched = await client.get_knowledge_by_id(record.id)
@@ -223,6 +236,34 @@ async def test_process_transcript_returns_empty_list_when_nothing_extracted():
     result = await process_transcript(_transcript(), fake_llm, client)
 
     assert result == []
+
+
+async def test_full_pipeline_writes_a_conflict_record_when_llm_says_contradicting():
+    """T042: a contradiction produces an explicit conflict record - linking
+    both knowledge ids via `conflicts_with` - instead of silently
+    overwriting or superseding the existing belief."""
+    existing_record = _knowledge_record(
+        statement="SSO is not planned for this fiscal year"
+    )
+    client = FakeOpenVikingClient()
+    await client.write_knowledge(existing_record)
+
+    fake_llm = FakeLLM()
+    fake_llm.set_next_extract_result(
+        [{"topic": "enterprise_sso", "statement": "SSO shipped last week"}]
+    )
+    fake_llm.set_next_compare_result("contradicting")
+    fake_llm.set_next_classify_result("decision")
+
+    written = await process_transcript(_transcript(), fake_llm, client)
+
+    assert len(written) == 1
+    record = written[0]
+    assert record.status == KnowledgeStatus.CONFLICTING
+    assert record.conflicts_with == [existing_record.id]
+
+    conflicts = await client.list_conflicts()
+    assert [c.id for c in conflicts] == [record.id]
 
 
 async def test_first_ever_mention_of_a_topic_is_written_with_no_supersedes_link():
