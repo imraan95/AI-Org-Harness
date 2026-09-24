@@ -296,6 +296,12 @@ wheels = [
 name = "shared-schemas"
 version = "0.1.0"
 source = { editable = "libs/shared_schemas" }
+dependencies = [
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pydantic", specifier = ">=2.13.5" }]
 
 [[package]]
 name = "tomli"
