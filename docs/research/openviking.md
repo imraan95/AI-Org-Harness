@@ -143,11 +143,15 @@ curl http://localhost:1933/health
 
 This resolves open item #1 from the original draft of this section: `pip install openviking` installed cleanly on this Mac with no Rust/Cargo/C++ toolchain errors. The `init` wizard pulled three Ollama models automatically (`qwen3-embedding:0.6b`, `qwen3.5:4b`, `guoxuter/ov_intent_analysis_sft:v7_q8`) — separate from whatever model our own `llm_router` already uses locally; the two don't conflict, they're just both served by the same local Ollama daemon.
 
-## 7. Remaining open items before T033 (real OpenVikingClient) starts
+## 7. Confirmed in practice during T035
 
-1. **Confirm the `write_knowledge` → `content/write` mapping in §4 with me before I build the real `OpenVikingClient`** — already confirmed by you; noting it here as the design decision T033+ will implement against.
-2. **AGPL sign-off from Legal** — separate from the engineering work, flagged in §1. Still outstanding.
-3. **Test the `filter` parameter** once we're writing real records, to see if it gives us anything closer to custom multi-tenant metadata than account/user scoping does.
+- **`root_api_key` cannot call tenant-scoped data APIs** — confirmed by a real `403 Forbidden` from `content/write` and `search/glob` when using the container's root key. Fixed by creating a real account via `POST /api/v1/admin/accounts` (`{"account_id": "org-harness", "admin_user_id": "context-agent", "seed": "..."}`) and using the `user_key` it returns instead. This matches what the Admin API docs said would happen, now verified rather than assumed.
+- **`wait: true` on `content/write` blocks until OpenViking's VLM finishes summarizing the file** (generating `.abstract.md`/`.overview.md`), which timed out against a cold-start local Ollama model. Since our own `get_knowledge_by_id` reads back via `glob` (path matching) + `content/read` (direct file read) — neither depends on that summarization — `RealOpenVikingClient.write_knowledge` uses `wait: false`. The file is persisted to the tree synchronously either way; only the semantic/vector queue is what `wait` controls waiting for.
+
+## 8. Remaining open items
+
+1. **AGPL sign-off from Legal** — separate from the engineering work, flagged in §1. Still outstanding.
+2. **Test the `filter` parameter** on `search/find`/`search/search` once T036 builds `get_relevant_knowledge`, to see if it gives us anything closer to custom multi-tenant metadata than account/user scoping does.
 
 ## Sources
 
