@@ -35,3 +35,18 @@ async def test_classify_returns_one_of_the_given_categories():
         ["decision", "fact", "hypothesis"],
     )
     assert result in ["decision", "fact", "hypothesis"]
+
+
+async def test_embed_returns_a_nonempty_vector_of_floats():
+    llm = OllamaLLM()
+    result = await llm.embed("Three enterprise customers have asked for SSO.")
+    assert isinstance(result, list)
+    assert len(result) > 0
+    assert all(isinstance(value, float) for value in result)
+
+
+async def test_embed_is_deterministic_for_the_same_text():
+    llm = OllamaLLM()
+    first = await llm.embed("Three enterprise customers have asked for SSO.")
+    second = await llm.embed("Three enterprise customers have asked for SSO.")
+    assert first == second

@@ -62,3 +62,9 @@ class FrontierLLM(LLM):
 
     async def summarise(self, text: str) -> str:
         raise NotImplementedError("FrontierLLM.summarise is not wired up yet")
+
+    async def embed(self, text: str) -> list[float]:
+        # Anthropic has no embeddings API - callers that need real
+        # embeddings should use OllamaLLM directly, regardless of which
+        # backend get_llm() returns for the other tasks.
+        raise NotImplementedError("FrontierLLM.embed is not supported - use OllamaLLM")

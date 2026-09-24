@@ -28,3 +28,6 @@ class LLM(ABC):
 
     @abstractmethod
     async def summarise(self, text: str) -> str: ...
+
+    @abstractmethod
+    async def embed(self, text: str) -> list[float]: ...

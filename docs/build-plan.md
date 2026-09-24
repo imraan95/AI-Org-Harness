@@ -345,11 +345,12 @@ Tasks marked **⚠ research needed** depend on facts about Anarlog's webhook con
 **Test:** The findings doc exists, includes one real example payload, and states the exact signature verification steps in enough detail that T049 can be implemented without further guessing. As concrete proof, trigger one real (or sandbox) Anarlog webhook and confirm T044's endpoint actually receives and logs it.
 **Don't:** Start T045's normaliser code yet.
 
-### T045 — Payload normalisation
+### T045 — Payload normalisation ✅ COMPLETE
 **Goal:** Convert Anarlog's payload shape into our `Transcript`/`TranscriptChunk` types.
 **Start:** T044, T009, S2 complete.
 **Do:** Implement a normaliser function (pure, no I/O) using the real Anarlog payload shape.
 **Test:** Unit test feeds a fixture Anarlog payload, asserts the output matches the `Transcript`/`TranscriptChunk` models from T009.
+**Status:** Done. `ingestion_service.normalise_anarlog_payload()` (pure) converts the envelope into a `Transcript` + raw chunk-text strings; `build_transcript_chunks()` (async, calls a real embedding model) turns those into `TranscriptChunk`s. Required adding `LLM.embed()` across the whole `llm_router` interface (`OllamaLLM` calls `/api/embeddings` with `qwen3-embedding:0.6b`, already pulled locally from T035; `FrontierLLM.embed` raises `NotImplementedError` - Anthropic has no embeddings API; `FakeLLM.embed` is a canned test double) - decided via explicit choice ("build real embeddings now") over stubbing, since nothing in the codebase had embedding support yet. Two open gaps carried from `docs/research/anarlog.md`, handled defensively rather than guessed at as fact: `meeting_date` falls back to the envelope's `created_at` (delivery time, not confirmed meeting time), and `participants` entries are accepted as either plain strings or objects (`name`/`display_name`). Chunk size (2000 chars, `textwrap.wrap`) is an arbitrary default - no chunking strategy exists in the PRD.
 
 ### T046 — Persist on webhook receipt
 **Goal:** Store the normalised transcript.

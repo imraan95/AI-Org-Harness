@@ -10,6 +10,9 @@ from .interface import LLM
 
 DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 DEFAULT_OLLAMA_MODEL = "llama3.2"
+# Already pulled locally as part of T035's OpenViking setup (its own
+# embedding config), so re-using it here needs no extra download.
+DEFAULT_OLLAMA_EMBEDDING_MODEL = "qwen3-embedding:0.6b"
 
 
 class OllamaLLM(LLM):
@@ -30,6 +33,9 @@ class OllamaLLM(LLM):
             "OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL
         )
         self._model = model or os.environ.get("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
+        self._embedding_model = os.environ.get(
+            "OLLAMA_EMBEDDING_MODEL", DEFAULT_OLLAMA_EMBEDDING_MODEL
+        )
         # Local model calls (especially a cold start, while Ollama loads the
         # model into memory) can take a lot longer than httpx's 5s default.
         self._client = client or httpx.AsyncClient(
@@ -85,3 +91,11 @@ class OllamaLLM(LLM):
 
     async def summarise(self, text: str) -> str:
         raise NotImplementedError("OllamaLLM.summarise is not wired up yet")
+
+    async def embed(self, text: str) -> list[float]:
+        response = await self._client.post(
+            "/api/embeddings",
+            json={"model": self._embedding_model, "prompt": text},
+        )
+        response.raise_for_status()
+        return response.json()["embedding"]

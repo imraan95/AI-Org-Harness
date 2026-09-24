@@ -18,6 +18,7 @@ class FakeLLM(LLM):
         self._next_classify_result: str = ""
         self._next_compare_result: str = ""
         self._next_summarise_result: str = ""
+        self._next_embed_result: list[float] = []
 
         # Records of every call made, for tests that need to assert on
         # what was actually sent to the "model", not just what came back.
@@ -26,6 +27,7 @@ class FakeLLM(LLM):
         self.classify_calls: list[tuple[str, list[str]]] = []
         self.compare_calls: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
         self.summarise_calls: list[str] = []
+        self.embed_calls: list[str] = []
 
     def set_next_generate_result(self, result: str) -> None:
         self._next_generate_result = result
@@ -41,6 +43,9 @@ class FakeLLM(LLM):
 
     def set_next_summarise_result(self, result: str) -> None:
         self._next_summarise_result = result
+
+    def set_next_embed_result(self, result: list[float]) -> None:
+        self._next_embed_result = result
 
     async def generate(self, prompt: str) -> str:
         self.generate_calls.append(prompt)
@@ -63,3 +68,7 @@ class FakeLLM(LLM):
     async def summarise(self, text: str) -> str:
         self.summarise_calls.append(text)
         return self._next_summarise_result
+
+    async def embed(self, text: str) -> list[float]:
+        self.embed_calls.append(text)
+        return self._next_embed_result

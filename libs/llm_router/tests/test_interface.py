@@ -19,6 +19,9 @@ class _MinimalLLM(LLM):
     async def summarise(self, text):
         return ""
 
+    async def embed(self, text):
+        return []
+
 
 def test_subclass_implementing_all_methods_can_be_instantiated():
     instance = _MinimalLLM()
