@@ -40,10 +40,10 @@ class RealOpenVikingClient(OpenVikingClient):
     and read back the same way - OpenViking is used purely as a
     semantic-searchable file store, not as a second extraction pipeline.
 
-    Only `write_knowledge` and `get_knowledge_by_id` are implemented here
-    (build-plan T035). `get_relevant_knowledge` (T036) and
+    `write_knowledge`, `get_knowledge_by_id` (T035), and
+    `get_relevant_knowledge` (T036) are implemented here.
     `list_conflicts`/`update_knowledge_status` (T037) are implemented in
-    later tasks.
+    a later task.
     """
 
     def __init__(
@@ -112,9 +112,31 @@ class RealOpenVikingClient(OpenVikingClient):
         return KnowledgeRecord.model_validate_json(raw_json)
 
     async def get_relevant_knowledge(self, topic: str) -> list[KnowledgeRecord]:
-        raise NotImplementedError(
-            "RealOpenVikingClient.get_relevant_knowledge is built in T036"
+        # Every record for a topic lives under one directory we control
+        # ourselves (see _record_uri), so an exact glob within that
+        # directory is a precise topic match - no dependence on semantic
+        # embedding quality, unlike a free-text `find`/`search` query.
+        # `context-agent` always calls this with the exact same topic
+        # string a candidate was written under, so exact matching is the
+        # correct behaviour here, not a simplification.
+        glob_response = await self._client.post(
+            "/api/v1/search/glob",
+            json={
+                "pattern": "*.json",
+                "uri": f"{KNOWLEDGE_ROOT}/{_topic_slug(topic)}",
+            },
         )
+        result = self._unwrap(glob_response)
+        matches = result.get("matches", [])
+
+        records: list[KnowledgeRecord] = []
+        for uri in matches:
+            read_response = await self._client.get(
+                "/api/v1/content/read", params={"uri": uri}
+            )
+            raw_json = self._unwrap(read_response)
+            records.append(KnowledgeRecord.model_validate_json(raw_json))
+        return records
 
     async def list_conflicts(self) -> list[KnowledgeRecord]:
         raise NotImplementedError(

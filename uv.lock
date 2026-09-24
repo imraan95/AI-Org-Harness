@@ -367,11 +367,15 @@ name = "openviking-client"
 version = "0.1.0"
 source = { editable = "libs/openviking_client" }
 dependencies = [
+    { name = "httpx" },
     { name = "knowledge-model" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "knowledge-model", editable = "libs/knowledge_model" }]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "knowledge-model", editable = "libs/knowledge_model" },
+]
 
 [[package]]
 name = "org-harness"

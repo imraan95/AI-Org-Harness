@@ -1,4 +1,4 @@
-"""Integration test against a REAL, running OpenViking service (T035).
+"""Integration tests against a REAL, running OpenViking service (T035, T036).
 
 Unlike every other test in this repo, this one is NOT a fake/unit test - it
 makes real HTTP calls to the container started in infra/docker-compose.yml.
@@ -40,13 +40,15 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def _knowledge_record() -> KnowledgeRecord:
+def _knowledge_record(
+    *, topic: str = "enterprise_sso", statement: str = "..."
+) -> KnowledgeRecord:
     now = datetime.now(timezone.utc)
     return KnowledgeRecord(
         id=f"K-{uuid.uuid4()}",
         type="customer_insight",
-        topic="enterprise_sso",
-        statement="Three enterprise customers have asked for SSO.",
+        topic=topic,
+        statement=statement,
         status="active",
         confidence=0.6,
         source_ids=["meeting_test"],
@@ -75,5 +77,28 @@ async def test_get_knowledge_by_id_returns_none_for_unknown_id():
     fetched = await client.get_knowledge_by_id(f"K-{uuid.uuid4()}")
 
     assert fetched is None
+
+    await client.aclose()
+
+
+async def test_get_relevant_knowledge_returns_only_the_matching_topic():
+    # Unique topic names per run so leftover data from earlier test runs
+    # (this container's storage persists across runs) can't cause a false
+    # match or inflate the count.
+    run_id = uuid.uuid4().hex[:8]
+    topic_a = f"topic_a_{run_id}"
+    topic_b = f"topic_b_{run_id}"
+
+    client = RealOpenVikingClient()
+    record_a = _knowledge_record(topic=topic_a, statement="About topic A.")
+    record_b = _knowledge_record(topic=topic_b, statement="About topic B.")
+
+    await client.write_knowledge(record_a)
+    await client.write_knowledge(record_b)
+
+    results = await client.get_relevant_knowledge(topic_a)
+
+    assert [r.id for r in results] == [record_a.id]
+    assert results[0] == record_a
 
     await client.aclose()
