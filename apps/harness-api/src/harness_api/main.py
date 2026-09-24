@@ -1,5 +1,6 @@
 """T050: harness-api scaffold - GET /knowledge/{id}.
 T051: protected by a logged-in user's Supabase Auth token.
+T052: also accepts a static service key, for non-user callers.
 """
 
 from __future__ import annotations
@@ -10,7 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from knowledge_model import KnowledgeRecord
 from openviking_client import OpenVikingClient, RealOpenVikingClient
 
-from .auth import get_current_user
+from .auth import get_current_user_or_service
 
 app = FastAPI(title="harness-api")
 
@@ -30,7 +31,7 @@ async def get_openviking_client() -> AsyncIterator[OpenVikingClient]:
 @app.get("/knowledge/{knowledge_id}", response_model=KnowledgeRecord)
 async def get_knowledge(
     knowledge_id: str,
-    _user: dict = Depends(get_current_user),
+    _user: dict = Depends(get_current_user_or_service),
     openviking: OpenVikingClient = Depends(get_openviking_client),
 ) -> KnowledgeRecord:
     record = await openviking.get_knowledge_by_id(knowledge_id)

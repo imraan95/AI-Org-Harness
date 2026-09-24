@@ -398,11 +398,12 @@ Tasks marked **⚠ research needed** depend on facts about Anarlog's webhook con
 **Test:** Integration test with no token gets 401; with a valid Supabase-issued token (generated via the Supabase Auth admin API in the test setup) gets 200.
 **Status:** Done. `harness_api.auth.get_current_user()` verifies via `PyJWKClient` against Supabase's JWKS endpoint, not a static secret - confirmed live (`curl .../.well-known/jwks.json`) that this project's local Supabase instance is on the newer **ES256 asymmetric JWT Signing Keys** system, not the legacy shared HS256 secret `docs/architecture.md` had hedged as one of two possibilities. `GET /knowledge/{id}` now requires a valid bearer token; test creates a real, email-confirmed user via the Supabase Auth admin API and signs them in for a real access token (no hand-crafted JWTs). Full suite green (75 passed) once the pre-existing Ollama/OpenViking contention issue is worked around (`docker compose down` in `infra/`) - see `infra/README.md`, real fix tracked separately, not blocking.
 
-### T052 — Static API key auth dependency (for service callers)
+### T052 — Static API key auth dependency (for service callers) ✅ COMPLETE
 **Goal:** Let non-user services (like `mcp-server`) call the API too.
 **Start:** T051.
 **Do:** Add a second dependency `verify_service_key()` checking a static shared-secret header; update routes to accept *either* a valid Supabase JWT *or* a valid service key.
 **Test:** Integration test with a valid service key and no user token gets 200; with neither, gets 401.
+**Status:** Done. `harness_api.auth.verify_service_key()` checks an `x-service-key` header (constant-time compare) against `HARNESS_API_SERVICE_KEY` (env var, dev placeholder fallback - same pattern as `ANARLOG_WEBHOOK_SECRET`). `get_current_user_or_service()` tries the service key first, falls back to the existing `get_current_user()` JWT check, so `GET /knowledge/{id}` now accepts either. This is the "one trusted workspace" scope from `docs/architecture.md` §6/§10 (PRD §18) - a single shared key for every service caller, not per-service or per-employee identity. Real consequence: whoever builds `apps/mcp-server` next will need `HARNESS_API_SERVICE_KEY` set to call this API. Full suite green.
 
 ### T053 — `GET /decisions`, `GET /people`, `GET /conflicts`
 **Goal:** Filtered list views.

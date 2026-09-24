@@ -1,5 +1,6 @@
 """T050: GET /knowledge/{id} against a REAL running OpenViking.
 T051: same endpoint, now behind a real Supabase Auth token.
+T052: same endpoint, also accepts a static service key instead of a token.
 
 Skips itself if OpenViking isn't reachable, OPENVIKING_API_KEY isn't set,
 or SUPABASE_SECRET_KEY/SUPABASE_PUBLISHABLE_KEY aren't set (needed to
@@ -20,6 +21,7 @@ from fastapi.testclient import TestClient
 from knowledge_model import KnowledgeRecord
 from openviking_client import RealOpenVikingClient
 
+from harness_api.auth import HARNESS_API_SERVICE_KEY
 from harness_api.main import app
 
 OPENVIKING_BASE_URL = os.environ.get("OPENVIKING_BASE_URL", "http://127.0.0.1:1933")
@@ -130,6 +132,35 @@ def test_get_knowledge_by_id_returns_404_for_unknown_id():
     )
 
     assert response.status_code == 404
+
+
+async def test_get_knowledge_by_id_returns_200_with_a_valid_service_key_and_no_user_token():
+    record_id = f"K-test-{uuid.uuid4()}"
+    record = _fixture_record(record_id)
+
+    openviking = RealOpenVikingClient()
+    try:
+        await openviking.write_knowledge(record)
+    finally:
+        await openviking.aclose()
+
+    client = TestClient(app)
+    response = client.get(
+        f"/knowledge/{record_id}", headers={"x-service-key": HARNESS_API_SERVICE_KEY}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["id"] == record_id
+
+
+def test_get_knowledge_by_id_returns_401_with_neither_token_nor_service_key():
+    client = TestClient(app)
+    response = client.get(
+        f"/knowledge/K-does-not-exist-{uuid.uuid4()}",
+        headers={"x-service-key": "wrong-key"},
+    )
+
+    assert response.status_code == 401
 
 
 def test_get_knowledge_by_id_returns_401_without_a_token():
