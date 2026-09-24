@@ -167,6 +167,47 @@ async def test_write_persists_records_with_correct_statuses_for_impact_level():
         assert fetched is not None
 
 
+async def test_full_pipeline_writes_a_knowledge_record_matching_prd_example():
+    """PRD §6: "Three enterprise customers have asked for SSO..." end to end
+    through Extract -> Retrieve -> Compare -> Classify -> Write."""
+    transcript = Transcript(
+        id="meeting_sso_2026_09",
+        meeting_title="September product meeting",
+        attendees=["Sales", "Product"],
+        meeting_date=datetime.now(timezone.utc),
+        source="test",
+        raw_text=(
+            "Three enterprise customers have asked for SSO and Sales says "
+            "it's becoming a blocker."
+        ),
+    )
+
+    fake_llm = FakeLLM()
+    fake_llm.set_next_extract_result(
+        [
+            {
+                "topic": "enterprise_sso",
+                "statement": (
+                    "Three enterprise customers have asked for SSO; Sales "
+                    "considers it a potential deal blocker."
+                ),
+            }
+        ]
+    )
+    fake_llm.set_next_classify_result("customer_insight")
+    client = FakeOpenVikingClient()
+
+    written = await process_transcript(transcript, fake_llm, client)
+
+    assert len(written) == 1
+    record = written[0]
+    assert record.topic == "enterprise_sso"
+    assert record.type == KnowledgeType.CUSTOMER_INSIGHT
+
+    stored = await client.get_knowledge_by_id(record.id)
+    assert stored is not None
+
+
 async def test_process_transcript_returns_empty_list_when_nothing_extracted():
     fake_llm = FakeLLM()
     fake_llm.set_next_extract_result([])
