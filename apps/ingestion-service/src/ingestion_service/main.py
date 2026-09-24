@@ -1,16 +1,18 @@
-"""T044: ingestion-service scaffold.
+"""T044: ingestion-service scaffold. T046: persist real events to Supabase.
 
-Just a live HTTP endpoint that receives an Anarlog webhook and logs the raw
-body. No parsing, verification, or persistence yet - that's T045 (payload
-normalisation, once S2's research resolves Anarlog's real payload shape and
-signature scheme) and T046 (persist to Supabase).
+No signature verification yet - that's T049.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 
+from db import get_session_factory, insert_transcript, insert_transcript_chunks
 from fastapi import FastAPI, Request
+from llm_router import OllamaLLM
+
+from .normalise import build_transcript_chunks, normalise_anarlog_payload
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +25,24 @@ logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="ingestion-service")
 
+# Embeddings always go through Ollama directly (see llm_router.FrontierLLM
+# comment - Anthropic has no embeddings API), not through get_llm()'s
+# task-router, which might pick Frontier for everything else.
+_llm = OllamaLLM()
+_session_factory = get_session_factory()
+
+# `webhook.test` (data = {"message": "..."}, see docs/research/anarlog.md
+# §8) and any other future event type are acknowledged with 200 but not
+# normalised or persisted - only these carry a real `data.meeting` payload.
+#
+# Of these two, only `note.enhanced` is actually persisted: it fires later
+# than `meeting.completed`, for the SAME meeting, once Anarlog's own AI
+# summary is ready. Persisting both would try to insert two rows sharing
+# the same Transcript.id (the meeting id) - there's no dedup/upsert task
+# yet (flagged in build-plan.md's T046 status), so for now we wait for the
+# richer, later event and just log-and-ack `meeting.completed`.
+_PERSISTABLE_EVENTS = {"note.enhanced"}
+
 
 @app.post("/webhooks/anarlog")
 async def receive_anarlog_webhook(request: Request) -> dict[str, str]:
@@ -32,4 +52,16 @@ async def receive_anarlog_webhook(request: Request) -> dict[str, str]:
         len(body),
         body.decode("utf-8", errors="replace"),
     )
+
+    payload = json.loads(body)
+    if payload.get("event") not in _PERSISTABLE_EVENTS:
+        return {"status": "received"}
+
+    transcript, chunk_texts = normalise_anarlog_payload(payload)
+    chunks = await build_transcript_chunks(_llm, transcript.id, chunk_texts)
+
+    async with _session_factory() as session:
+        await insert_transcript(session, transcript)
+        await insert_transcript_chunks(session, transcript.id, chunks)
+
     return {"status": "received"}

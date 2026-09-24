@@ -352,11 +352,12 @@ Tasks marked **⚠ research needed** depend on facts about Anarlog's webhook con
 **Test:** Unit test feeds a fixture Anarlog payload, asserts the output matches the `Transcript`/`TranscriptChunk` models from T009.
 **Status:** Done. `ingestion_service.normalise_anarlog_payload()` (pure) converts the envelope into a `Transcript` + raw chunk-text strings; `build_transcript_chunks()` (async, calls a real embedding model) turns those into `TranscriptChunk`s. Required adding `LLM.embed()` across the whole `llm_router` interface (`OllamaLLM` calls `/api/embeddings` with `qwen3-embedding:0.6b`, already pulled locally from T035; `FrontierLLM.embed` raises `NotImplementedError` - Anthropic has no embeddings API; `FakeLLM.embed` is a canned test double) - decided via explicit choice ("build real embeddings now") over stubbing, since nothing in the codebase had embedding support yet. Two open gaps carried from `docs/research/anarlog.md`, handled defensively rather than guessed at as fact: `meeting_date` falls back to the envelope's `created_at` (delivery time, not confirmed meeting time), and `participants` entries are accepted as either plain strings or objects (`name`/`display_name`). Chunk size (2000 chars, `textwrap.wrap`) is an arbitrary default - no chunking strategy exists in the PRD.
 
-### T046 — Persist on webhook receipt
+### T046 — Persist on webhook receipt ✅ COMPLETE
 **Goal:** Store the normalised transcript.
 **Start:** T045, T016.
 **Do:** Wire the endpoint to call `insert_transcript()` + `insert_transcript_chunks()`.
 **Test:** Integration test POSTs a fixture payload, then queries Supabase directly to confirm both rows exist.
+**Status:** Done, with two decisions made and flagged rather than left implicit: (1) only `note.enhanced` is persisted - `meeting.completed` fires first for the same meeting and would collide on `Transcript.id` (the meeting id) if both were written, and there's no dedup/upsert task yet; `meeting.completed` and `webhook.test` are acknowledged (200) but not normalised or written. (2) Idempotency on retried deliveries (same envelope `id`) is **not** implemented - flagged in `docs/research/anarlog.md` §5 as needed before real-world use, but no task currently owns it (not T049, which is signature verification specifically). Revisit alongside T049 or add a dedicated task before this goes anywhere near production traffic.
 
 ### T047 — Enqueue processing job on webhook receipt
 **Goal:** Hand off to the context agent asynchronously.
