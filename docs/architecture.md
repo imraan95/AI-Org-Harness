@@ -19,7 +19,7 @@ From this conversation's stack choice:
 - **Frontend** is Next.js (TypeScript, App Router).
 - **Database + auth** is Supabase — a hosted/self-hostable Postgres with pgvector already available, plus built-in auth. This satisfies the PRD's "Postgres + pgvector" requirement directly; Supabase isn't a new dependency on top of it, it *is* the Postgres.
 - **Backend services** (ingestion, context agent, harness API, MCP server) are Python, built on FastAPI where they expose HTTP.
-- OpenViking's own storage stays separate from Supabase (see §9) since it's a fork we don't control the schema of by default.
+- OpenViking's own storage stays separate from Supabase (see §9): confirmed by research to be a self-contained file/vector store, not Postgres, so there's no shared-database question at all — it's simply a separate service we talk to over HTTP.
 
 ## 2. High-level component map
 
@@ -44,7 +44,8 @@ From this conversation's stack choice:
               │   OPENVIKING (own service)  │
               │   forked from upstream OSS   │
               │   Resources │ Memories │ Skills │
-              │   own Postgres + pgvector    │
+              │   own storage (viking:// FS,  │
+              │   built-in vectors — no PG)   │
               └ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘
                            │
                            ▼
@@ -92,8 +93,9 @@ org-harness/
 │   └── migrations/              # SQL migrations for OUR tables only (Supabase CLI-managed)
 │
 ├── infra/
-│   ├── docker-compose.yml       # local dev: the vendored OpenViking service + its OWN
-│   │                             # Postgres+pgvector (Supabase's Postgres is run separately,
+│   ├── docker-compose.yml       # local dev: the vendored OpenViking service, using its
+│   │                             # official docker-compose.yml as the base (own storage,
+│   │                             # no Postgres — Supabase's Postgres is run separately,
 │   │                             # via `supabase start`, not in this file)
 │   └── env/                     # .env.example per service
 │
@@ -131,11 +133,13 @@ Supabase is **not** used for OpenViking's storage — see §9 for why, and the n
 
 The OpenViking memory/context layer from PRD §12, forked from its upstream open-source repository rather than written by us:
 
-- Brought in as a **git submodule**, pinned to a specific commit/tag, with local patches (schema extensions for `workspace_id`/`visibility`/etc., deployment config) scripted in `scripts/sync-openviking.sh` rather than edited into upstream files directly.
-- Runs as its own container in `infra/docker-compose.yml`, with its own Postgres + pgvector instance — kept separate from Supabase's Postgres (see §9).
-- Exposes its own API, whose exact shape depends on what the actual upstream project provides — unverified, see §9.
+- Brought in as a **git submodule**, pinned to a specific commit/tag (`ghcr.io/volcengine/openviking` is the official image if we run it via Docker instead of building from source).
+- Runs as its own container in `infra/docker-compose.yml` (based on upstream's own `docker-compose.yml`), with its own internal storage — a `viking://` virtual filesystem with a built-in vector index. Confirmed via research (`docs/research/openviking.md`): **no Postgres involved at all**, so there's no shared-instance question with Supabase to hedge against.
+- Exposes a real HTTP API (confirmed, not assumed): `POST /api/v1/content/write` to create/update a file, `POST /api/v1/search/find` for semantic search, `GET /api/v1/content/read` to read one back, plus admin endpoints for multi-tenant accounts/users. Auth via `X-API-Key`/`Authorization: Bearer` — a `user_key` scopes to one tenant automatically.
+- We do **not** use OpenViking's own session/memory-extraction feature (its `POST /api/v1/sessions/*` API) — that runs OpenViking's own LLM extraction/dedup pipeline into its own fixed memory taxonomy, which would duplicate and conflict with `context-agent`'s Extract/Compare/Classify steps and PRD §10/§17's rules. We use OpenViking only as a semantic-searchable file store for records `context-agent` has already classified.
+- **License**: AGPL-3.0 for the main project. Needs RMS Legal sign-off before production — flagged, not resolved, by this doc.
 
-Nothing outside `vendor/openviking` reads or writes its database directly. All access goes through `libs/openviking_client`.
+Nothing outside `vendor/openviking` reads or writes its storage directly. All access goes through `libs/openviking_client`, over HTTP.
 
 ### apps/ingestion-service (FastAPI)
 
@@ -155,7 +159,7 @@ The core processing pipeline described in PRD §3, §6, §9. A polling worker (n
 4. **Classify** — assigns `type`, `confidence` (PRD §10 rules), `status`.
 5. **Write** — `openviking_client.write_knowledge()`; high-impact changes get `status: pending_review` instead of `active` (PRD §17).
 
-`context-agent` never opens a database connection to OpenViking's Postgres — every knowledge read/write is an HTTP call via `openviking_client`. It reads original transcript text/chunks from our own Supabase tables via `libs/db` when it needs evidence.
+`context-agent` never touches OpenViking's internal storage directly — every knowledge read/write is an HTTP call via `openviking_client`. It reads original transcript text/chunks from our own Supabase tables via `libs/db` when it needs evidence.
 
 ### apps/harness-api (FastAPI)
 
@@ -207,7 +211,13 @@ The four-pane MVP UI from PRD §16: Company Memory, Conflicts, Sources, Harness.
 
 ### libs/openviking_client
 
-The only piece of the codebase allowed to talk to the vendored OpenViking service. An `httpx`-based client wrapping its API behind: `get_relevant_knowledge()`, `write_knowledge()`, `get_knowledge_by_id()`, `list_conflicts()`, `update_knowledge_status()`.
+The only piece of the codebase allowed to talk to the vendored OpenViking service. An `httpx`-based client wrapping OpenViking's real HTTP API behind our own interface: `get_relevant_knowledge()`, `write_knowledge()`, `get_knowledge_by_id()`, `list_conflicts()`, `update_knowledge_status()`. Concretely:
+
+- `write_knowledge(record)` → `POST /api/v1/content/write`, writing `record` as a JSON file at `viking://resources/knowledge/{record.topic}/{record.id}.json`.
+- `get_relevant_knowledge(topic)` → `POST /api/v1/search/find` scoped to `viking://resources/knowledge/`, then `GET /api/v1/content/read` on each match to parse the JSON back into a `KnowledgeRecord`.
+- `get_knowledge_by_id(id)` → a direct `content/read` when the topic-scoped URI is known, or `POST /api/v1/search/glob` (`**/{id}.json`) otherwise.
+
+This is a deliberate design choice (not upstream's intended usage pattern) — see PRD §12 and `docs/research/openviking.md` §4 for why we're bypassing OpenViking's own session/memory feature.
 
 ### libs/llm_router
 
@@ -248,16 +258,16 @@ SQLAlchemy (async, via `asyncpg`) models and session management for **our own ta
 | Ingestion audit log | `ingestion_events` | Record of what came in from Anarlog and when. |
 | App users | Supabase's built-in `auth.users` | Managed entirely by Supabase Auth — we don't define this table ourselves. |
 
-**OpenViking's own Postgres + pgvector** (inside `vendor/openviking`, migrated by the fork's own tooling — separate instance from Supabase):
+**OpenViking's own storage** (a `viking://` virtual filesystem with a built-in vector index inside `vendor/openviking` — confirmed to have no Postgres involved at all, so this is a genuinely separate storage engine, not a second database instance):
 
-| Data | Concept | Notes |
+| Data | Where | Notes |
 |---|---|---|
-| Knowledge records | Memories | The K-XXXXX schema from PRD §7: id, type, topic, statement, status, confidence, source_ids, people, timestamps, `supersedes`. |
-| Evidence links | Memories ↔ Resources | Points back to our `transcripts`/`transcript_chunks` row ids — cross-service reference by id, not a shared foreign key (the two Postgres instances don't know about each other). |
-| People | Resources or Memories (depends on the fork's model) | Normalised person records referenced by knowledge. |
-| Conflicts | Memories, flagged | Pairs of knowledge records marked contradictory, plus status (`pending`, `resolved`, `dismissed`). |
-| Review queue | Memories with `status: pending_review` | High-impact proposed updates awaiting human approve/edit/reject (PRD §17). |
-| Permissions scaffold | `workspace_id`, `source_id`, `visibility`, `owner`, `access_level` | Added as a local patch on top of the fork if upstream doesn't already model them — unused for enforcement in MVP but present from day one per PRD §18. |
+| Knowledge records | `viking://resources/knowledge/{topic}/{id}.json` | The K-XXXXX schema from PRD §7 (id, type, topic, statement, status, confidence, source_ids, people, timestamps, `supersedes`), stored as one JSON file per record under OpenViking's Resources context type, semantically indexed automatically on write. |
+| Evidence links | `source_ids` field inside the JSON | Points back to our `transcripts`/`transcript_chunks` row ids — cross-service reference by id, since OpenViking has no knowledge of Supabase's schema at all. |
+| People | `people` field inside the JSON | Normalised person references inline on each knowledge record, not a separate OpenViking entity. |
+| Conflicts | Knowledge records with `status: pending_review` + a paired contradicting record | Both are ordinary files under `viking://resources/knowledge/`; "conflict" is a relationship our own code detects and encodes (PRD §9), not an OpenViking-native concept. |
+| Review queue | Knowledge records with `status: pending_review` | High-impact proposed updates awaiting human approve/edit/reject (PRD §17) — same files, filtered by status. |
+| Permissions scaffold | `workspace_id`, `source_id`, `visibility`, `owner`, `access_level` | Kept as fields inside our own JSON payload (not an OpenViking schema feature — it has none to extend). OpenViking's native multi-tenancy is account/user-based (its Admin API), which is a coarser unit than what PRD §18 eventually wants; unused for enforcement in MVP either way. |
 
 Nothing is deleted from either store. Superseded knowledge records stay with `status: superseded` and a `supersedes`/`superseded_by` pointer (PRD §8, §20).
 
@@ -273,7 +283,7 @@ Anarlog ──webhook──► ingestion-service ──insert (libs/db)──►
                                      calls: llm_router (extract/compare/classify)
                                                    │
                                      calls: openviking_client ──HTTP──►
-                                     OpenViking service [vendor/openviking, own Postgres]
+                                     OpenViking service [vendor/openviking, own file+vector store]
                                                    │
 harness-api ──calls openviking_client (reads knowledge)──────────┘
      │        + reads Supabase via libs/db (evidence text)
@@ -289,7 +299,7 @@ harness-api ──calls openviking_client (reads knowledge)───────
 
 Key points:
 
-- **OpenViking is a network dependency, not an import**, and its Postgres is never touched by anything outside `vendor/openviking`.
+- **OpenViking is a network dependency, not an import**, and its internal storage is never touched by anything outside `vendor/openviking` — everything goes through its HTTP API.
 - **Only `context-agent` and `harness-api`'s human-review endpoints write to OpenViking**, both exclusively through `openviking_client`.
 - **Only `libs/db` talks to Supabase's Postgres**, and only from `ingestion-service`, `context-agent`, and `harness-api` — never from `apps/web` directly, even though Supabase's Row Level Security would technically allow it.
 - **Supabase Auth is the only auth system we build against** — no custom password handling, no session table of our own.
@@ -311,9 +321,17 @@ Key points:
 
 Per PRD §20: no fine-grained RBAC beyond the schema columns and the two coarse auth paths on `harness-api`, no multi-agent orchestration framework, no custom transcription, no graph database, no mobile app.
 
-## 9. Note on the OpenViking fork itself
+## 9. Note on the OpenViking fork itself — resolved by the S1 research spike
 
-I don't have verified, up-to-date knowledge of OpenViking's actual open-source repository — its real API shape, storage engine, license, or how actively it's maintained. Keeping its Postgres separate from Supabase's is a deliberate hedge: if it turns out OpenViking expects to own its full Postgres instance (its own extensions, its own connection pooling assumptions), sharing Supabase's instance could conflict with how Supabase manages that database. Before building Phase 6 of `build-plan.md`, confirm: the repo URL and license, its real API transport/shape, whether it natively supports multi-tenant metadata, and whether it could in fact share a Postgres instance with Supabase safely (in which case the separate-container setup here is more caution than strictly required, and could be simplified later).
+This used to flag OpenViking's real API shape, storage engine, and license as unverified. That research is now done — full findings in `docs/research/openviking.md`. Summary of what changed from the original assumption:
+
+- **No Postgres, at all.** OpenViking stores everything in its own `viking://` virtual filesystem with a built-in vector index. The "keep its Postgres separate from Supabase's" hedge in earlier drafts of this doc was based on a wrong assumption — there's no second Postgres instance to hedge against. It's a genuinely separate service reached only over HTTP, which is simpler than originally planned.
+- **Real API confirmed**: `POST /api/v1/content/write` (create/update a file), `POST /api/v1/search/find` (semantic search), `GET /api/v1/content/read`, plus `POST /api/v1/admin/accounts` for multi-tenant account/user management. Auth via `X-API-Key`/`Authorization: Bearer`.
+- **Multi-tenancy is native, but account/user-scoped** (via the Admin API and per-key tenant resolution), not arbitrary custom metadata fields on individual records. There's an undocumented `filter` parameter on search that might support more — untested, flagged as an open item in the research doc.
+- **License is AGPL-3.0** for the main project (CLI/examples are Apache 2.0). This needs sign-off from RMS Legal before production, since it wasn't evaluated by Legal as part of this research — it's an engineering finding, not a legal clearance.
+- **Design decision made as a result**: we don't use OpenViking's own session/memory-extraction feature, since it runs a competing LLM pipeline into its own fixed memory taxonomy that would duplicate `context-agent`'s Extract/Compare/Classify steps and PRD §10/§17's rules. OpenViking is used purely as a semantic-searchable JSON file store for records `context-agent` has already classified — see `libs/openviking_client` in §4.
+
+Remaining open item before Phase 6 (`build-plan.md` T033+): confirm `pip install openviking` runs cleanly on macOS without needing a local Rust/C++ toolchain (untested at time of writing), and get a real local server responding on `/health` as concrete proof it runs.
 
 ## 10. Note on the auth model
 

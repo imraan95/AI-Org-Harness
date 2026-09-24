@@ -346,18 +346,24 @@ MVP architecture:
     Resources       Memories        Skills
 ```
 
-OpenViking is the memory/context orchestration layer from day one — the Context Agent reads and writes through it rather than talking to storage directly. Postgres + pgvector sits underneath OpenViking as the concrete store for:
+These are OpenViking's own three top-level context types (confirmed real, not assumed). The MVP only uses **Resources** — knowledge records are written and searched as files under it. Memories and Skills are OpenViking's own session/extraction and agent-skill features respectively; the MVP doesn't use either, since our own confidence/review logic (§10, §17) already does what OpenViking's Memories feature would otherwise do.
+
+OpenViking is the memory/context orchestration layer from day one — the Context Agent reads and writes through it rather than talking to storage directly.
+
+**Correction (confirmed by research, see `docs/research/openviking.md`)**: OpenViking does not sit on Postgres. It has its own self-contained storage engine — a virtual filesystem (`viking://...`) with a built-in vector index — reachable only over its own HTTP API. There is no shared or underlying Postgres instance to reason about; OpenViking's storage is entirely separate from ours.
+
+Our own Supabase Postgres + pgvector remains the store for things OpenViking never sees:
 
 - Raw transcripts
-- Chunks
-- Entities
-- Memories
-- Decisions
-- Evidence
-- Relationships
-- Metadata
+- Chunks (with embeddings, for evidence lookup)
+- Job queue
+- Ingestion audit log
 
-OpenViking is infrastructure, not the product. The system should remain replaceable if required — Postgres + pgvector is the fallback of record if OpenViking ever needs to be swapped out or bypassed.
+Knowledge records themselves (decisions, facts, customer insights — PRD §7) are written into OpenViking as JSON files under a `viking://resources/knowledge/...` path, using OpenViking purely as a semantic-searchable store for records the Context Agent has already extracted, compared, and classified — not via OpenViking's own session/memory-extraction feature, which runs its own competing LLM pipeline and would bypass this PRD's confidence rules (§10) and human-review gating (§17).
+
+OpenViking is infrastructure, not the product. The system should remain replaceable if required — our own Supabase Postgres + pgvector is the fallback of record if OpenViking ever needs to be swapped out or bypassed, since it already holds the source transcripts everything else is derived from.
+
+**License flag**: OpenViking's main project is AGPL-3.0. This needs sign-off from RMS Legal before it goes into any production build — not an engineering decision.
 
 ## 13. Meeting ingestion
 
