@@ -14,6 +14,13 @@ from fastapi import FastAPI, Request
 
 logger = logging.getLogger(__name__)
 
+# Without this, our INFO-level logs are silently dropped when run for real
+# (python defaults the root logger to WARNING) - uvicorn only configures its
+# own "uvicorn.access"/"uvicorn.error" loggers, not ours. pytest's `caplog`
+# fixture masks this in tests by forcing capture regardless of level, which
+# is why T044's test passed even though this line was missing.
+logging.basicConfig(level=logging.INFO)
+
 app = FastAPI(title="ingestion-service")
 
 
