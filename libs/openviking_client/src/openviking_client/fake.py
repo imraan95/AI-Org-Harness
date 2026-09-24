@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from knowledge_model import KnowledgeRecord, KnowledgeStatus
+from knowledge_model import KnowledgeRecord, KnowledgeStatus, KnowledgeType
 
 from .interface import OpenVikingClient
 
@@ -29,6 +29,9 @@ class FakeOpenVikingClient(OpenVikingClient):
 
     async def list_conflicts(self) -> list[KnowledgeRecord]:
         return [r for r in self._records if r.status == KnowledgeStatus.CONFLICTING]
+
+    async def list_by_type(self, knowledge_type: KnowledgeType) -> list[KnowledgeRecord]:
+        return [r for r in self._records if r.type == knowledge_type]
 
     async def update_knowledge_status(
         self, knowledge_id: str, status: KnowledgeStatus

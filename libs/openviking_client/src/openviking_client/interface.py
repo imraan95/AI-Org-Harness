@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from knowledge_model import KnowledgeRecord, KnowledgeStatus
+from knowledge_model import KnowledgeRecord, KnowledgeStatus, KnowledgeType
 
 
 class OpenVikingClient(ABC):
@@ -26,6 +26,9 @@ class OpenVikingClient(ABC):
 
     @abstractmethod
     async def list_conflicts(self) -> list[KnowledgeRecord]: ...
+
+    @abstractmethod
+    async def list_by_type(self, knowledge_type: KnowledgeType) -> list[KnowledgeRecord]: ...
 
     @abstractmethod
     async def update_knowledge_status(

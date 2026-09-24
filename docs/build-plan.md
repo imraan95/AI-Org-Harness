@@ -405,11 +405,12 @@ Tasks marked **⚠ research needed** depend on facts about Anarlog's webhook con
 **Test:** Integration test with a valid service key and no user token gets 200; with neither, gets 401.
 **Status:** Done. `harness_api.auth.verify_service_key()` checks an `x-service-key` header (constant-time compare) against `HARNESS_API_SERVICE_KEY` (env var, dev placeholder fallback - same pattern as `ANARLOG_WEBHOOK_SECRET`). `get_current_user_or_service()` tries the service key first, falls back to the existing `get_current_user()` JWT check, so `GET /knowledge/{id}` now accepts either. This is the "one trusted workspace" scope from `docs/architecture.md` §6/§10 (PRD §18) - a single shared key for every service caller, not per-service or per-employee identity. Real consequence: whoever builds `apps/mcp-server` next will need `HARNESS_API_SERVICE_KEY` set to call this API. Full suite green.
 
-### T053 — `GET /decisions`, `GET /people`, `GET /conflicts`
+### T053 — `GET /decisions`, `GET /people`, `GET /conflicts` ✅ COMPLETE
 **Goal:** Filtered list views.
 **Start:** T052.
 **Do:** Implement each as a type-filtered list over `openviking_client`, behind the same auth dependency.
 **Test:** Integration test seeds fixtures of each type; each endpoint returns only its matching records.
+**Status:** Done. Added `list_by_type(KnowledgeType)` to the `OpenVikingClient` interface (+ fake + real, real via the same content-grep approach as `list_conflicts`) since no such method existed yet. `GET /decisions` and `GET /people` use it directly. `GET /conflicts` deliberately reuses the existing T037 `list_conflicts()` instead - PRD §16's "Conflicts" pane means "potential contradictions / pending confirmation" (`KnowledgeStatus.CONFLICTING`), a status, not the separate `KnowledgeType.CONFLICT` enum value; using `list_by_type(CONFLICT)` here would have been the wrong filter despite the tempting name match, flagged here so it isn't "fixed" incorrectly later. Full suite green.
 
 ### T054 — `GET /context`, `/context/product`, `/context/customer`, `/context/strategy`
 **Goal:** Topic-scoped aggregate views.

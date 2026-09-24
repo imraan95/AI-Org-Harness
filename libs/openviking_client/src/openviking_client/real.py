@@ -5,7 +5,7 @@ import re
 
 import httpx
 
-from knowledge_model import KnowledgeRecord, KnowledgeStatus
+from knowledge_model import KnowledgeRecord, KnowledgeStatus, KnowledgeType
 
 from .interface import OpenVikingClient
 
@@ -166,6 +166,25 @@ class RealOpenVikingClient(OpenVikingClient):
         result = self._unwrap(grep_response)
         # A file could in principle match on more than one line; dedupe by
         # uri while preserving order.
+        seen: dict[str, None] = {}
+        for match in result.get("matches", []):
+            seen.setdefault(match["uri"], None)
+        return [await self._read_record(uri) for uri in seen]
+
+    async def list_by_type(self, knowledge_type: KnowledgeType) -> list[KnowledgeRecord]:
+        # Same "grep file content, since there's no server-side
+        # query-by-field endpoint" approach as list_conflicts, matching on
+        # `type` instead of `status`.
+        grep_response = await self._client.post(
+            "/api/v1/search/grep",
+            json={
+                "uri": KNOWLEDGE_ROOT,
+                "pattern": f'"type":\\s*"{knowledge_type.value}"',
+            },
+        )
+        if grep_response.status_code == 404:
+            return []
+        result = self._unwrap(grep_response)
         seen: dict[str, None] = {}
         for match in result.get("matches", []):
             seen.setdefault(match["uri"], None)

@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from knowledge_model import KnowledgeRecord
+from knowledge_model import KnowledgeRecord, KnowledgeType
 
 from openviking_client import FakeOpenVikingClient
 
@@ -43,3 +43,15 @@ async def test_get_relevant_knowledge_matches_by_topic():
 
     assert len(results) == 1
     assert results[0].id == record.id
+
+
+async def test_list_by_type_matches_only_that_type():
+    client = FakeOpenVikingClient()
+    decision = _record(id="K-decision", type="decision")
+    person = _record(id="K-person", type="person")
+    await client.write_knowledge(decision)
+    await client.write_knowledge(person)
+
+    results = await client.list_by_type(KnowledgeType.DECISION)
+
+    assert [r.id for r in results] == [decision.id]

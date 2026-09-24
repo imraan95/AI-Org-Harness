@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 import httpx
 import pytest
 
-from knowledge_model import KnowledgeRecord, KnowledgeStatus
+from knowledge_model import KnowledgeRecord, KnowledgeStatus, KnowledgeType
 from openviking_client import RealOpenVikingClient
 
 BASE_URL = os.environ.get("OPENVIKING_BASE_URL", "http://127.0.0.1:1933")
@@ -41,12 +41,16 @@ pytestmark = pytest.mark.skipif(
 
 
 def _knowledge_record(
-    *, topic: str = "enterprise_sso", statement: str = "...", status: str = "active"
+    *,
+    topic: str = "enterprise_sso",
+    statement: str = "...",
+    status: str = "active",
+    type: str = "customer_insight",
 ) -> KnowledgeRecord:
     now = datetime.now(timezone.utc)
     return KnowledgeRecord(
         id=f"K-{uuid.uuid4()}",
-        type="customer_insight",
+        type=type,
         topic=topic,
         statement=statement,
         status=status,
@@ -125,6 +129,31 @@ async def test_list_conflicts_includes_conflicting_records():
     # and may hold conflicting records from earlier runs too.
     assert {conflict_1.id, conflict_2.id}.issubset(conflict_ids)
     assert all(r.status == KnowledgeStatus.CONFLICTING for r in conflicts)
+
+    await client.aclose()
+
+
+async def test_list_by_type_includes_only_matching_type_records():
+    run_id = uuid.uuid4().hex[:8]
+    client = RealOpenVikingClient()
+    decision = _knowledge_record(
+        topic=f"decision_{run_id}", statement="We picked X.", type="decision"
+    )
+    person = _knowledge_record(
+        topic=f"person_{run_id}", statement="Alice owns Y.", type="person"
+    )
+
+    await client.write_knowledge(decision)
+    await client.write_knowledge(person)
+
+    decisions = await client.list_by_type(KnowledgeType.DECISION)
+    decision_ids = {r.id for r in decisions}
+
+    # Same "subset, not exact count" reasoning as list_conflicts above -
+    # this container's storage persists across runs.
+    assert decision.id in decision_ids
+    assert person.id not in decision_ids
+    assert all(r.type == KnowledgeType.DECISION for r in decisions)
 
     await client.aclose()
 
