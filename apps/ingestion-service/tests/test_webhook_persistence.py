@@ -2,8 +2,16 @@
 
 import uuid
 
-from db import get_chunks_by_transcript_id, get_engine, get_session_factory, get_transcript
+from db import (
+    JobRow,
+    get_chunks_by_transcript_id,
+    get_engine,
+    get_session_factory,
+    get_transcript,
+    mark_job_done,
+)
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from ingestion_service.main import app
 
@@ -42,6 +50,17 @@ async def test_note_enhanced_webhook_persists_transcript_and_chunks():
     async with session_factory() as session:
         transcript = await get_transcript(session, meeting_id)
         chunks = await get_chunks_by_transcript_id(session, meeting_id)
+
+        # T047 also enqueues a job as a side effect of persisting. Clean it
+        # up so it doesn't sit "pending" forever and confuse
+        # libs/db/tests/test_jobs.py's dequeue-the-oldest-pending assumption
+        # (see test_job_enqueue.py's own cleanup for the same reason).
+        result = await session.execute(
+            select(JobRow).where(JobRow.type == "transcript.ingested")
+        )
+        for job in result.scalars().all():
+            if job.payload.get("transcript_id") == meeting_id:
+                await mark_job_done(session, job.id)
     await engine.dispose()
 
     assert transcript is not None

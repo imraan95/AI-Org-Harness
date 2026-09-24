@@ -359,11 +359,12 @@ Tasks marked **⚠ research needed** depend on facts about Anarlog's webhook con
 **Test:** Integration test POSTs a fixture payload, then queries Supabase directly to confirm both rows exist.
 **Status:** Done, with two decisions made and flagged rather than left implicit: (1) only `note.enhanced` is persisted - `meeting.completed` fires first for the same meeting and would collide on `Transcript.id` (the meeting id) if both were written, and there's no dedup/upsert task yet; `meeting.completed` and `webhook.test` are acknowledged (200) but not normalised or written. (2) Idempotency on retried deliveries (same envelope `id`) is **not** implemented - flagged in `docs/research/anarlog.md` §5 as needed before real-world use, but no task currently owns it (not T049, which is signature verification specifically). Revisit alongside T049 or add a dedicated task before this goes anywhere near production traffic.
 
-### T047 — Enqueue processing job on webhook receipt
+### T047 — Enqueue processing job on webhook receipt ✅ COMPLETE
 **Goal:** Hand off to the context agent asynchronously.
 **Start:** T046, T017.
 **Do:** After persisting, call `enqueue_job("transcript.ingested", {"transcript_id": ...})`.
 **Test:** Integration test POSTs a fixture payload, then queries the `jobs` table and asserts one pending job references the correct transcript id.
+**Status:** Done. Also fixed a real bug this surfaced: `OllamaLLM`/the DB session factory were module-level singletons in `main.py`, which broke under pytest's per-test event loops ("Event loop is closed") - now created fresh per request (documented cost: not free under real load, revisit if ingestion-service needs throughput). Also found and fixed real test pollution: `dequeue_job()` claims the globally-oldest `pending` job, so any test that enqueues one and doesn't clean up breaks `libs/db/tests/test_jobs.py` (and itself, if it ever fails before reaching its own cleanup line - which is exactly what happened and required a manual `DELETE FROM jobs` to recover from). All ingestion-service tests that enqueue a job now mark it done before finishing.
 
 ### T048 — Context-agent worker loop
 **Goal:** Actually process queued jobs.

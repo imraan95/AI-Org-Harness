@@ -1,4 +1,5 @@
 """T044: ingestion-service scaffold. T046: persist real events to Supabase.
+T047: enqueue a transcript.ingested job for context-agent to pick up.
 
 No signature verification yet - that's T049.
 """
@@ -8,7 +9,12 @@ from __future__ import annotations
 import json
 import logging
 
-from db import get_session_factory, insert_transcript, insert_transcript_chunks
+from db import (
+    enqueue_job,
+    get_session_factory,
+    insert_transcript,
+    insert_transcript_chunks,
+)
 from fastapi import FastAPI, Request
 from llm_router import OllamaLLM
 
@@ -24,12 +30,6 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="ingestion-service")
-
-# Embeddings always go through Ollama directly (see llm_router.FrontierLLM
-# comment - Anthropic has no embeddings API), not through get_llm()'s
-# task-router, which might pick Frontier for everything else.
-_llm = OllamaLLM()
-_session_factory = get_session_factory()
 
 # `webhook.test` (data = {"message": "..."}, see docs/research/anarlog.md
 # §8) and any other future event type are acknowledged with 200 but not
@@ -58,10 +58,30 @@ async def receive_anarlog_webhook(request: Request) -> dict[str, str]:
         return {"status": "received"}
 
     transcript, chunk_texts = normalise_anarlog_payload(payload)
-    chunks = await build_transcript_chunks(_llm, transcript.id, chunk_texts)
 
-    async with _session_factory() as session:
+    # Created fresh per request rather than once at module scope: an
+    # httpx.AsyncClient (inside OllamaLLM) and a SQLAlchemy async engine
+    # both bind to whichever event loop is running when they're first
+    # used, and reusing one across requests that run on different loops
+    # (as pytest-asyncio's function-scoped loops do in tests) raises
+    # "Event loop is closed". A real per-request cost under uvicorn's one
+    # long-lived loop, but simplest thing that's actually correct - revisit
+    # if/when ingestion-service needs to handle real request volume.
+    #
+    # Embeddings always go through Ollama directly (see
+    # llm_router.FrontierLLM's comment - Anthropic has no embeddings API),
+    # not through get_llm()'s task-router, which might pick Frontier for
+    # everything else.
+    llm = OllamaLLM()
+    session_factory = get_session_factory()
+
+    chunks = await build_transcript_chunks(llm, transcript.id, chunk_texts)
+
+    async with session_factory() as session:
         await insert_transcript(session, transcript)
         await insert_transcript_chunks(session, transcript.id, chunks)
+        await enqueue_job(
+            session, "transcript.ingested", {"transcript_id": transcript.id}
+        )
 
     return {"status": "received"}
