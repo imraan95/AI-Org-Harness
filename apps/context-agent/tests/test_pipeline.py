@@ -1,13 +1,13 @@
 from datetime import datetime, timezone
 
 import pytest
-from knowledge_model import KnowledgeRecord, KnowledgeType
+from knowledge_model import KnowledgeRecord, KnowledgeStatus, KnowledgeType
 from llm_router import FakeLLM
 from openviking_client import FakeOpenVikingClient
 from shared_schemas import Transcript
 
 from context_agent import process_transcript
-from context_agent.pipeline import _classify, _compare, _extract, _retrieve
+from context_agent.pipeline import _classify, _compare, _extract, _retrieve, _write
 
 
 def _transcript() -> Transcript:
@@ -135,11 +135,43 @@ async def test_classify_assigns_type_via_llm_and_confidence_via_rules():
     ]
 
 
-async def test_process_transcript_still_returns_without_raising():
+async def test_write_persists_records_with_correct_statuses_for_impact_level():
+    client = FakeOpenVikingClient()
+    classified = [
+        {
+            "topic": "enterprise_sso",
+            "statement": "SSO decided for November",
+            "existing": [],
+            "relationship": "new",
+            "type": "decision",
+            "confidence": 0.9,
+        },
+        {
+            "topic": "enterprise_sso",
+            "statement": "SSO not planned for Q4",
+            "existing": [_knowledge_record()],
+            "relationship": "contradicting",
+            "type": "decision",
+            "confidence": 0.9,
+        },
+    ]
+
+    written = await _write(client, classified)
+
+    assert len(written) == 2
+    assert written[0].status == KnowledgeStatus.ACTIVE
+    assert written[1].status == KnowledgeStatus.PENDING_REVIEW
+
+    for record in written:
+        fetched = await client.get_knowledge_by_id(record.id)
+        assert fetched is not None
+
+
+async def test_process_transcript_returns_empty_list_when_nothing_extracted():
     fake_llm = FakeLLM()
     fake_llm.set_next_extract_result([])
     client = FakeOpenVikingClient()
 
     result = await process_transcript(_transcript(), fake_llm, client)
 
-    assert result is None
+    assert result == []
