@@ -172,11 +172,12 @@ async def test_write_persists_records_with_correct_statuses_for_impact_level():
         },
     ]
 
-    written = await _write(client, classified)
+    written = await _write(client, classified, "meeting_test")
 
     assert len(written) == 3
     assert written[0].status == KnowledgeStatus.ACTIVE
     assert written[0].conflicts_with == []
+    assert written[0].source_ids == ["meeting_test"]
     assert written[1].status == KnowledgeStatus.PENDING_REVIEW
     assert written[1].conflicts_with == []
     assert written[2].status == KnowledgeStatus.CONFLICTING
@@ -223,6 +224,7 @@ async def test_full_pipeline_writes_a_knowledge_record_matching_prd_example():
     record = written[0]
     assert record.topic == "enterprise_sso"
     assert record.type == KnowledgeType.CUSTOMER_INSIGHT
+    assert record.source_ids == ["meeting_sso_2026_09"]
 
     stored = await client.get_knowledge_by_id(record.id)
     assert stored is not None

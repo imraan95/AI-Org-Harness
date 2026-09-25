@@ -6,20 +6,37 @@ T054: GET /context, /context/product, /context/customer, /context/strategy.
 T055: POST /knowledge/{id}/approve.
 T056: POST /knowledge/{id}/reject.
 T057: POST /knowledge/{id}/edit.
+T058: GET /knowledge/{id} includes a `sources` array (meeting title/date).
 """
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import AsyncIterator
 
+from db import get_session_factory, get_transcript
 from fastapi import Depends, FastAPI, HTTPException
 from knowledge_model import KnowledgeRecord, KnowledgeStatus, KnowledgeType
 from openviking_client import OpenVikingClient, RealOpenVikingClient
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from .auth import get_current_user_or_service
 
 app = FastAPI(title="harness-api")
+
+
+class Source(BaseModel):
+    """One piece of provenance for a knowledge record - PRD's "show the
+    meetings supporting each memory" (§16.C), not the raw transcript id.
+    """
+
+    meeting_title: str
+    meeting_date: datetime
+
+
+class KnowledgeRecordWithSources(KnowledgeRecord):
+    sources: list[Source] = []
 
 
 class KnowledgeEditRequest(BaseModel):
@@ -48,16 +65,36 @@ async def get_openviking_client() -> AsyncIterator[OpenVikingClient]:
         await client.aclose()
 
 
-@app.get("/knowledge/{knowledge_id}", response_model=KnowledgeRecord)
+async def get_db_session() -> AsyncIterator[AsyncSession]:
+    # Same fresh-per-request reasoning as get_openviking_client - a
+    # SQLAlchemy async engine is event-loop-bound too.
+    session_factory = get_session_factory()
+    async with session_factory() as session:
+        yield session
+
+
+@app.get("/knowledge/{knowledge_id}", response_model=KnowledgeRecordWithSources)
 async def get_knowledge(
     knowledge_id: str,
     _user: dict = Depends(get_current_user_or_service),
     openviking: OpenVikingClient = Depends(get_openviking_client),
-) -> KnowledgeRecord:
+    session: AsyncSession = Depends(get_db_session),
+) -> KnowledgeRecordWithSources:
     record = await openviking.get_knowledge_by_id(knowledge_id)
     if record is None:
         raise HTTPException(status_code=404, detail="knowledge record not found")
-    return record
+
+    sources = []
+    for source_id in record.source_ids:
+        transcript = await get_transcript(session, source_id)
+        if transcript is not None:
+            sources.append(
+                Source(
+                    meeting_title=transcript.meeting_title,
+                    meeting_date=transcript.meeting_date,
+                )
+            )
+    return KnowledgeRecordWithSources(**record.model_dump(), sources=sources)
 
 
 @app.get("/decisions", response_model=list[KnowledgeRecord])

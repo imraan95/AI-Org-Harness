@@ -104,7 +104,9 @@ def _determine_status(
 
 
 async def _write(
-    openviking: OpenVikingClient, classified: list[dict[str, Any]]
+    openviking: OpenVikingClient,
+    classified: list[dict[str, Any]],
+    transcript_id: str = "",
 ) -> list[KnowledgeRecord]:
     """Persist each classified candidate to OpenViking.
 
@@ -112,6 +114,14 @@ async def _write(
     rather than `active`, so a human approves/resolves them before
     they're treated as current (PRD §17) - the system never
     auto-publishes or auto-resolves those (T043).
+
+    T058: `llm.extract()` only ever returns `topic`/`statement` (see
+    ollama.py's extract prompt) - nothing populates a candidate's own
+    `source_ids`, so every real record was silently written with
+    `source_ids=[]` until now. Every candidate from one `extract()` call
+    comes from the same transcript, so that transcript's id is always a
+    correct (if coarse - not chunk-level) source attribution; `.get(...)`
+    still wins if a future `extract()` ever returns something finer.
     """
     written: list[KnowledgeRecord] = []
     for item in classified:
@@ -134,7 +144,7 @@ async def _write(
             statement=item["statement"],
             status=status,
             confidence=confidence,
-            source_ids=item.get("source_ids", []),
+            source_ids=item.get("source_ids") or ([transcript_id] if transcript_id else []),
             people=item.get("people", []),
             created_at=now,
             observed_at=now,
@@ -175,6 +185,6 @@ async def process_transcript(
     classified = await _classify(llm, compared)
     logger.info("Classified %d candidate(s)", len(classified))
 
-    written = await _write(openviking, classified)
+    written = await _write(openviking, classified, transcript.id)
     logger.info("Wrote %d knowledge record(s)", len(written))
     return written

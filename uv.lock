@@ -487,6 +487,7 @@ name = "harness-api"
 version = "0.1.0"
 source = { editable = "apps/harness-api" }
 dependencies = [
+    { name = "db" },
     { name = "fastapi" },
     { name = "httpx" },
     { name = "knowledge-model" },
@@ -497,6 +498,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "db", editable = "libs/db" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "knowledge-model", editable = "libs/knowledge_model" },

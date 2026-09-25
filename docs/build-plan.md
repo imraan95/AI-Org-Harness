@@ -440,11 +440,12 @@ Tasks marked **⚠ research needed** depend on facts about Anarlog's webhook con
 **Test:** Integration test edits a fixture's `statement` field and confirms the change persists and `edited_by` is set.
 **Status:** Done. Added `edited_by: str | None = None` to `KnowledgeRecord` (didn't exist yet). Added `update_knowledge_fields(id, updates, edited_by)` to `OpenVikingClient` (+ fake + real, real via the same read-modify-write-replace shape as `update_knowledge_status`, merging arbitrary fields instead of just `status`). `POST /knowledge/{id}/edit` takes a small `KnowledgeEditRequest` body - **judgment call**: only `statement`/`topic`/`confidence` are exposed as editable for MVP (not every field - status has its own approve/reject routes, ids/timestamps aren't editable at all), since neither the PRD nor build-plan specify an exact editable-field list. Full suite (`libs/knowledge_model libs/openviking_client apps/harness-api`): 50 passed.
 
-### T058 — Provenance formatting
+### T058 — Provenance formatting ✅ COMPLETE
 **Goal:** Every knowledge response includes readable source info, not raw ids.
 **Start:** T050, T015.
 **Do:** Join `source_ids` back to `transcripts` via `libs/db` and attach a `sources` array (meeting title, date) to knowledge responses.
 **Test:** Integration test asserts `/knowledge/{id}` includes a `sources` array with real meeting titles/dates.
+**Status:** Done, plus a real upstream bug found and fixed. `GET /knowledge/{id}` now returns `KnowledgeRecordWithSources` (a `KnowledgeRecord` plus `sources: list[Source]`), joining each `source_ids` entry to `transcripts` via a fresh-per-request DB session (same event-loop-safety pattern as `openviking`). Scoped to `/knowledge/{id}` only, not the list endpoints - that's what the build-plan's own test wording asks for. **Real bug found while wiring this up**: `context_agent.pipeline._write()` never actually populated `source_ids` from a real transcript - `llm.extract()` only ever returns `topic`/`statement`, so every real (non-test-fixture) knowledge record was silently written with `source_ids=[]`, which would have made this feature a no-op against real data. Fixed by threading `transcript.id` through `process_transcript()` into `_write()` as the source id, `.get(...)` still winning if a future `extract()` ever returns something finer-grained (e.g. chunk-level). `harness-api` gained a `db` workspace dependency. Full suite: 104 passed, 7 failed - all 7 are `httpx.ReadTimeout` from the pre-existing Ollama/OpenViking contention (`infra/README.md`), not a regression; the scoped `apps/harness-api` run was 26/26 green.
 
 ### T059 — `GET /knowledge/{id}/history`
 **Goal:** Walk the `supersedes` chain.
