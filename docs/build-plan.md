@@ -626,6 +626,13 @@ The provenance check goes past the search tool's source *count* (all list-based 
 
 `uv run pytest scripts/test_e2e_smoke.py -v`: 1 passed. Full suite afterward (`uv run pytest -v`): 132 passed, 6 skipped (pre-existing, unrelated), no regressions.
 
+### Real fix — implement `OllamaLLM.compare()`
+Discovered as a genuine blocker while starting T075/T076: both need a second meeting compared against existing knowledge on the same topic, but `OllamaLLM.compare()` (`libs/llm_router/src/llm_router/ollama.py`) was a hard `raise NotImplementedError` - only `extract`/`classify`/`embed` were ever wired up. By user decision (offered the alternative of using `FakeLLM` for these two walkthroughs instead, matching T074's precedent), implemented it for real rather than faking it: same one-shot-prompt style as `classify()`, constrained to reply with exactly one of the four relationship words `docs/architecture.md`'s pipeline step 3 and `pipeline.py`'s `_write`/`_determine_status` already match against (`new`/`corroborating`/`superseding`/`contradicting`), `.strip().lower()`'d for safety since these are compared with `==` against hardcoded lowercase literals (unlike `classify()`'s dynamic category list). Added `test_compare_returns_one_of_the_four_relationships` to `libs/llm_router/tests/test_ollama.py`, same real-Ollama-skip-if-not-running convention as its neighbours.
+
+Hit the same Ollama contention/wedging issue from T078's original discovery while testing this - `ollama ps` showed a model stuck in "Stopping...", and this time a plain `brew services restart ollama` alone didn't clear it (a fresh process wedged again almost immediately). Root-caused to OpenViking's container re-wedging it right away: stopping OpenViking's container first, then hard-killing the Ollama process and restarting it, then bringing OpenViking back up, held cleanly. Documented here as further live evidence for T078 (still pending) - the contention isn't just slowness, it's a full daemon hang that a longer timeout alone doesn't fix.
+
+`uv run pytest libs/llm_router -v`: 16 passed. Full suite (`uv run pytest -v`): 133 passed, 6 skipped, no regressions.
+
 ### T075 — Manual PRD §6 walkthrough (belief evolution)
 **Goal:** Confirm the system updates beliefs rather than overwriting them.
 **Start:** T074.

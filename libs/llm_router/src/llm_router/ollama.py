@@ -16,10 +16,11 @@ DEFAULT_OLLAMA_EMBEDDING_MODEL = "qwen3-embedding:0.6b"
 
 
 class OllamaLLM(LLM):
-    """Calls a local Ollama server for the cheap tasks (extract, classify).
+    """Calls a local Ollama server for the cheap tasks (extract, classify,
+    compare).
 
-    `generate`/`compare`/`summarise` aren't wired up yet - those are decided
-    by the model router (later tasks), which may send them to a different
+    `generate`/`summarise` aren't wired up yet - those are decided by the
+    model router (later tasks), which may send them to a different
     backend/model entirely.
     """
 
@@ -94,7 +95,32 @@ class OllamaLLM(LLM):
     async def compare(
         self, candidate: dict[str, Any], existing: list[dict[str, Any]]
     ) -> str:
-        raise NotImplementedError("OllamaLLM.compare is not wired up yet")
+        # pipeline.py's `_compare` only calls this when `existing` is
+        # non-empty (see its own "new" shortcut) - the four relationship
+        # values below are exactly what docs/architecture.md's pipeline
+        # step 3 and pipeline.py's `_write`/`_determine_status` match
+        # against, so the model is constrained to exactly those words.
+        existing_statements = "\n".join(
+            f"- {record.get('statement', '')}" for record in existing
+        )
+        prompt = (
+            "Compare this new candidate statement against the "
+            "organisation's existing knowledge on the same topic. Reply "
+            "with ONLY one of: new, corroborating, superseding, "
+            "contradicting - meaning:\n"
+            "- new: nothing existing really overlaps with this candidate\n"
+            "- corroborating: this candidate agrees with and reinforces "
+            "existing knowledge\n"
+            "- superseding: this candidate updates or replaces existing "
+            "knowledge with newer information about the same belief\n"
+            "- contradicting: this candidate directly conflicts with "
+            "existing knowledge\n\n"
+            f"New candidate statement:\n{candidate.get('statement', '')}\n\n"
+            f"Existing knowledge on this topic:\n{existing_statements}\n\n"
+            "Reply with ONLY the single word, nothing else."
+        )
+        raw = await self._call(prompt)
+        return raw.strip().lower()
 
     async def summarise(self, text: str) -> str:
         raise NotImplementedError("OllamaLLM.summarise is not wired up yet")

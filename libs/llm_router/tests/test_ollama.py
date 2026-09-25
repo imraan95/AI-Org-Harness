@@ -37,6 +37,15 @@ async def test_classify_returns_one_of_the_given_categories():
     assert result in ["decision", "fact", "hypothesis"]
 
 
+async def test_compare_returns_one_of_the_four_relationships():
+    llm = OllamaLLM()
+    result = await llm.compare(
+        {"topic": "Enterprise SSO", "statement": "We're going to ship SSO in November."},
+        [{"statement": "SSO is not planned for Q4."}],
+    )
+    assert result in ["new", "corroborating", "superseding", "contradicting"]
+
+
 async def test_embed_returns_a_nonempty_vector_of_floats():
     llm = OllamaLLM()
     result = await llm.embed("Three enterprise customers have asked for SSO.")
