@@ -540,6 +540,13 @@ Found and fixed a bug in my own first draft of this test, not in the pipeline: f
 **Start:** T005.
 **Do:** Add `@supabase/ssr` (or `@supabase/supabase-js`) to `apps/web`; build a login page (email/password or magic link); add middleware/layout redirecting unauthenticated users to it.
 **Test:** Manual — visiting any app route while logged out redirects to login; logging in with a Supabase test user lands on the app.
+**Status:** ✅ COMPLETE. Added `@supabase/ssr` + `@supabase/supabase-js`; `lib/supabase/client.ts` (browser client) and `lib/supabase/server.ts` (Server Component/Action client, per the standard App Router cookie-bridging pattern); `middleware.ts` refreshing the session via `getUser()` (not just `getSession()` - actually revalidates against Supabase Auth) on every request and redirecting anyone without a session to `/login`; a plain email/password login page (`app/login/page.tsx` + a `login` Server Action in `app/login/actions.ts`). By user decision, email/password rather than magic link - local dev has no SMTP configured, so magic links couldn't actually be tested without extra setup.
+
+Env vars: `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` (`.env.example` added; real values in `apps/web/.env.local`, gitignored). This project's local Supabase is on the newer key system (`supabase status` prints "Publishable"/"Secret", not "anon"/"service_role" - matches T051's own finding) - `NEXT_PUBLIC_SUPABASE_ANON_KEY` holds the `sb_publishable_...` value, which `@supabase/ssr` accepts in that same parameter slot; the `sb_secret_...` value is never used client-side.
+
+Verified live in the browser pane: visiting `/` while logged out redirected to `/login`; logging in with a test user created in Supabase Studio (Authentication → Users → Add user, Auto Confirm checked) landed on `/`; a reload of `/` afterward stayed on `/` (session persisted, no redirect loop).
+
+**Known follow-up, not blocking:** Next.js 16.3.6 prints `The "middleware" file convention is deprecated. Please use "proxy" instead` - `middleware.ts` still runs correctly (confirmed above), so left as-is rather than guessing at the new convention's exact API shape unverified. Worth migrating properly (`npx @next/codemod@canary middleware-to-proxy .`) before this app goes further, but not urgent.
 
 ### T069 — Static 4-pane shell
 **Goal:** The authenticated skeleton UI with no data.
@@ -570,6 +577,12 @@ Found and fixed a bug in my own first draft of this test, not in the pipeline: f
 **Start:** T069, T054, T062.
 **Do:** Add a search box calling the same context/search path `search_company_context()` uses.
 **Test:** Manual — type a seeded topic; confirm the results match what T062's MCP tool would return for the same query.
+
+### T077 — Editable knowledge taxonomy (custom types)
+**Goal:** Users can extend the harness's knowledge taxonomy with their own custom types, without touching what's already built.
+**Start:** T057, T069, T071.
+**Do:** By user decision - the 8 built-in `KnowledgeType` values (decision, fact, customer_insight, strategy, product_requirement, process, policy, person, ownership, action, hypothesis, conflict) stay fixed, since every MCP tool (`get_recent_decisions`, `get_customer_insights`, etc.) and the pipeline's classifier depend on their exact values. Users can additionally define their own custom types on top of that fixed set. Concretely: a new `custom_knowledge_types` table (Supabase migration, `libs/db`); new `harness-api` endpoints (`GET /taxonomy/types` - built-ins plus an org's custom ones; `POST /taxonomy/types` to add one; `DELETE /taxonomy/types/{id}` - built-ins can't be deleted); loosen `KnowledgeRecord.type` from the strict `KnowledgeType` enum to `str` (validated against built-in ∪ custom at the API boundary, since custom types are dynamic/DB-backed and the model itself has no way to know about them); a small taxonomy-management section in `apps/web` (list/add/delete custom types); the Conflicts pane's edit flow (T071) offers both built-in and custom types when assigning a record's type.
+**Test:** Adding a custom type via the web UI, then assigning it to a record through the edit flow, round-trips - the type persists and appears correctly on a later fetch. The 8 built-in types and every existing MCP tool continue to work unchanged.
 
 ---
 
