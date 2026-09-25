@@ -50,3 +50,27 @@ def format_answer(records: list[dict[str, Any]]) -> str:
         )
 
     return f"Current understanding:\n\n{understanding}\n\nEvidence:\n{evidence}{tension}"
+
+
+def _history_line(index: int, record: dict[str, Any]) -> str:
+    status = str(record.get("status", "unknown")).upper()
+    when = record.get("superseded_at") or record.get("last_updated_at") or record.get(
+        "created_at"
+    )
+    when_str = f" ({when})" if when else ""
+    return f"{index}. [{status}]{when_str} {record.get('statement', '')}"
+
+
+def format_history(records: list[dict[str, Any]]) -> str:
+    """T067: renders a `/knowledge/{id}/history` chain (T059) as a
+    numbered, newest-to-oldest timeline.
+
+    Deliberately NOT `format_answer()`'s merged "Current understanding"
+    shape - a history view's whole point is showing which statements are
+    superseded and no longer current, not blending every statement in the
+    chain (old and new alike) into one summary.
+    """
+    if not records:
+        return "No history recorded for this knowledge."
+    lines = [_history_line(i, r) for i, r in enumerate(records, start=1)]
+    return "History (newest to oldest):\n\n" + "\n".join(lines)

@@ -1,10 +1,11 @@
 from .client import HarnessAPIClient
-from .formatting import format_answer
+from .formatting import format_answer, format_history
 from .server import (
     get_conflicting_information,
     get_current_strategy,
     get_customer_insights,
     get_evidence,
+    get_knowledge_history,
     get_person_context,
     get_product_context,
     get_recent_decisions,
@@ -24,6 +25,8 @@ __all__ = [
     "get_product_context",
     "get_person_context",
     "get_conflicting_information",
+    "get_knowledge_history",
     "HarnessAPIClient",
     "format_answer",
+    "format_history",
 ]

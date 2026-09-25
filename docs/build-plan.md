@@ -529,6 +529,7 @@ Found and fixed a bug in my own first draft of this test, not in the pipeline: f
 **Start:** T066, T059, T063.
 **Do:** Add or extend an MCP tool to surface the `/knowledge/{id}/history` chain.
 **Test:** MCP test client call returns the same chain as T059's REST call.
+**Status:** ✅ COMPLETE. Added `HarnessAPIClient.get_knowledge_history()` (calls `GET /knowledge/{id}/history`), a new MCP tool `get_knowledge_history(knowledge_id)`, and a dedicated `format_history()` formatter - by user decision, deliberately not reusing `format_answer()`. `format_answer()` merges every record's statement into one "Current understanding" block, which would present superseded statements as if still current; `format_history()` instead renders a numbered, newest-to-oldest timeline with each entry's status (`[ACTIVE]`/`[SUPERSEDED]`) and date. Tested against real OpenViking + in-process harness-api, same pattern as `get_evidence`'s own test: writes two records (old, then marked superseded via T066's `mark_superseded`, then a new one pointing `supersedes` back at it), confirms the MCP tool's output exactly matches `format_history()` applied to a direct REST call to `/knowledge/{id}/history`. `apps/mcp-server` full suite: 17 passed (13 previous + 2 new `format_history` unit tests + 2 new tool integration tests).
 
 ---
 

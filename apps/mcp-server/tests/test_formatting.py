@@ -5,7 +5,7 @@ Pure unit tests, no external services needed.
 
 from __future__ import annotations
 
-from mcp_server.formatting import format_answer
+from mcp_server.formatting import format_answer, format_history
 
 
 def test_format_answer_has_understanding_and_evidence_sections():
@@ -76,3 +76,36 @@ def test_format_answer_handles_no_records():
 
     assert "Current understanding:" in answer
     assert "Evidence:" in answer
+
+
+def test_format_history_lists_newest_to_oldest_with_status_labels():
+    records = [
+        {
+            "id": "K-new",
+            "statement": "SSO is now a recurring, escalating customer request.",
+            "status": "active",
+            "last_updated_at": "2026-09-25T00:00:00Z",
+        },
+        {
+            "id": "K-old",
+            "statement": "SSO is an occasional customer request.",
+            "status": "superseded",
+            "superseded_at": "2026-09-25T00:00:00Z",
+        },
+    ]
+
+    answer = format_history(records)
+
+    assert answer.startswith("History (newest to oldest):")
+    assert "1. [ACTIVE]" in answer
+    assert "SSO is now a recurring, escalating customer request." in answer
+    assert "2. [SUPERSEDED]" in answer
+    assert "SSO is an occasional customer request." in answer
+    # The new record's line should come before the old one's.
+    assert answer.index("SSO is now") < answer.index("SSO is an occasional")
+
+
+def test_format_history_handles_no_records():
+    answer = format_history([])
+
+    assert answer == "No history recorded for this knowledge."

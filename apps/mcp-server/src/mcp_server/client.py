@@ -45,6 +45,11 @@ class HarnessAPIClient:
         response.raise_for_status()
         return response.json()
 
+    async def get_knowledge_history(self, knowledge_id: str) -> list[dict[str, Any]]:
+        response = await self._client.get(f"/knowledge/{knowledge_id}/history")
+        response.raise_for_status()
+        return response.json()
+
     async def _get_list(self, path: str) -> list[dict[str, Any]]:
         response = await self._client.get(path)
         response.raise_for_status()

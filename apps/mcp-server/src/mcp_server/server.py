@@ -4,6 +4,9 @@ T063: `get_current_strategy`, `get_product_context`, `get_person_context`,
 `get_conflicting_information`.
 T064: every tool's output is PRD §15-style prose (Current understanding /
 Evidence / tension), not raw JSON - see formatting.py.
+T067: `get_knowledge_history` surfaces the `/knowledge/{id}/history`
+supersedes chain (T059/T066), formatted as its own newest-to-oldest
+timeline (format_history) rather than format_answer()'s merged summary.
 Post-T065: tool descriptions sharpened (by user decision) so a model
 reaches for these tools on its own for company-internal questions,
 without needing to be told to "check the harness" explicitly - confirmed
@@ -24,7 +27,7 @@ from typing import Callable
 from mcp.server.fastmcp import FastMCP
 
 from .client import HarnessAPIClient
-from .formatting import format_answer
+from .formatting import format_answer, format_history
 
 mcp = FastMCP(
     "harness-mcp-server",
@@ -147,6 +150,22 @@ async def get_person_context() -> str:
     finally:
         await client.aclose()
     return format_answer(records)
+
+
+@mcp.tool()
+async def get_knowledge_history(knowledge_id: str) -> str:
+    """Show how the organisation's understanding of one specific piece of
+    knowledge has changed over time, given its id (e.g. an id surfaced by
+    one of this server's other tools). Returns the full chain of
+    statements that superseded each other, newest first, each labelled
+    with its status. Use this for questions like "how has our thinking on
+    X evolved" or "what did we used to believe about X before this"."""
+    client = _client_factory()
+    try:
+        records = await client.get_knowledge_history(knowledge_id)
+    finally:
+        await client.aclose()
+    return format_history(records)
 
 
 @mcp.tool()
