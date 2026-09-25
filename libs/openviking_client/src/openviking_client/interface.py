@@ -37,3 +37,8 @@ class OpenVikingClient(ABC):
     async def update_knowledge_status(
         self, knowledge_id: str, status: KnowledgeStatus
     ) -> None: ...
+
+    @abstractmethod
+    async def update_knowledge_fields(
+        self, knowledge_id: str, updates: dict, edited_by: str
+    ) -> None: ...

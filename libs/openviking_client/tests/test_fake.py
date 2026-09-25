@@ -57,6 +57,21 @@ async def test_list_by_type_matches_only_that_type():
     assert [r.id for r in results] == [decision.id]
 
 
+async def test_update_knowledge_fields_persists_and_sets_edited_by():
+    client = FakeOpenVikingClient()
+    record = _record(statement="Original statement.")
+    await client.write_knowledge(record)
+
+    await client.update_knowledge_fields(
+        record.id, {"statement": "Edited statement."}, edited_by="alice@rms.test"
+    )
+    refetched = await client.get_knowledge_by_id(record.id)
+
+    assert refetched is not None
+    assert refetched.statement == "Edited statement."
+    assert refetched.edited_by == "alice@rms.test"
+
+
 async def test_list_all_returns_every_written_record():
     client = FakeOpenVikingClient()
     decision = _record(id="K-decision", type="decision")

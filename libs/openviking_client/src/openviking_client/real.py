@@ -225,5 +225,26 @@ class RealOpenVikingClient(OpenVikingClient):
         )
         self._unwrap(response)
 
+    async def update_knowledge_fields(
+        self, knowledge_id: str, updates: dict, edited_by: str
+    ) -> None:
+        # Same read-modify-write-via-replace shape as update_knowledge_status,
+        # just merging arbitrary field updates instead of only `status`.
+        uri = await self._find_uri_by_id(knowledge_id)
+        if uri is None:
+            return
+        record = await self._read_record(uri)
+        updated = record.model_copy(update={**updates, "edited_by": edited_by})
+        response = await self._client.post(
+            "/api/v1/content/write",
+            json={
+                "uri": uri,
+                "content": updated.model_dump_json(),
+                "mode": "replace",
+                "wait": False,
+            },
+        )
+        self._unwrap(response)
+
     async def aclose(self) -> None:
         await self._client.aclose()

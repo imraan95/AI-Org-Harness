@@ -5,6 +5,7 @@ T053: GET /decisions, /people, /conflicts - filtered list views.
 T054: GET /context, /context/product, /context/customer, /context/strategy.
 T055: POST /knowledge/{id}/approve.
 T056: POST /knowledge/{id}/reject.
+T057: POST /knowledge/{id}/edit.
 """
 
 from __future__ import annotations
@@ -14,10 +15,25 @@ from typing import AsyncIterator
 from fastapi import Depends, FastAPI, HTTPException
 from knowledge_model import KnowledgeRecord, KnowledgeStatus, KnowledgeType
 from openviking_client import OpenVikingClient, RealOpenVikingClient
+from pydantic import BaseModel
 
 from .auth import get_current_user_or_service
 
 app = FastAPI(title="harness-api")
+
+
+class KnowledgeEditRequest(BaseModel):
+    """Fields a human reviewer can edit before a proposed record goes
+    active (PRD §17/§20). Only the fields a human plausibly corrects by
+    hand for MVP - not every KnowledgeRecord field is open to editing here
+    (e.g. status has its own approve/reject routes, ids/timestamps aren't
+    editable at all).
+    """
+
+    edited_by: str
+    statement: str | None = None
+    topic: str | None = None
+    confidence: float | None = None
 
 
 async def get_openviking_client() -> AsyncIterator[OpenVikingClient]:
@@ -128,4 +144,19 @@ async def reject_knowledge(
     if record is None:
         raise HTTPException(status_code=404, detail="knowledge record not found")
     await openviking.update_knowledge_status(knowledge_id, KnowledgeStatus.REJECTED)
+    return await openviking.get_knowledge_by_id(knowledge_id)
+
+
+@app.post("/knowledge/{knowledge_id}/edit", response_model=KnowledgeRecord)
+async def edit_knowledge(
+    knowledge_id: str,
+    edit: KnowledgeEditRequest,
+    _user: dict = Depends(get_current_user_or_service),
+    openviking: OpenVikingClient = Depends(get_openviking_client),
+) -> KnowledgeRecord:
+    record = await openviking.get_knowledge_by_id(knowledge_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="knowledge record not found")
+    updates = edit.model_dump(exclude={"edited_by"}, exclude_none=True)
+    await openviking.update_knowledge_fields(knowledge_id, updates, edit.edited_by)
     return await openviking.get_knowledge_by_id(knowledge_id)

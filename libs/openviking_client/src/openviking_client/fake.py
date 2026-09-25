@@ -43,3 +43,13 @@ class FakeOpenVikingClient(OpenVikingClient):
             if record.id == knowledge_id:
                 self._records[i] = record.model_copy(update={"status": status})
                 return
+
+    async def update_knowledge_fields(
+        self, knowledge_id: str, updates: dict, edited_by: str
+    ) -> None:
+        for i, record in enumerate(self._records):
+            if record.id == knowledge_id:
+                self._records[i] = record.model_copy(
+                    update={**updates, "edited_by": edited_by}
+                )
+                return

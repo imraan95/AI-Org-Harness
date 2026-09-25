@@ -213,3 +213,26 @@ async def test_update_knowledge_status_persists():
     assert refetched.model_copy(update={"status": record.status}) == record
 
     await client.aclose()
+
+
+async def test_update_knowledge_fields_persists_and_sets_edited_by():
+    client = RealOpenVikingClient()
+    record = _knowledge_record(
+        topic=f"fields_update_{uuid.uuid4().hex[:8]}", statement="Original statement."
+    )
+    await client.write_knowledge(record)
+
+    await client.update_knowledge_fields(
+        record.id, {"statement": "Edited statement."}, edited_by="alice@rms.test"
+    )
+    refetched = await client.get_knowledge_by_id(record.id)
+
+    assert refetched is not None
+    assert refetched.statement == "Edited statement."
+    assert refetched.edited_by == "alice@rms.test"
+    # Everything else about the record should be untouched.
+    assert refetched.model_copy(
+        update={"statement": record.statement, "edited_by": record.edited_by}
+    ) == record
+
+    await client.aclose()

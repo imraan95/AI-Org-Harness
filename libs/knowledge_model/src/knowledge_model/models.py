@@ -40,3 +40,8 @@ class KnowledgeRecord(BaseModel):
     visibility: str = "internal"
     owner: str | None = None
     access_level: str = "standard"
+
+    # PRD §17/§20, build-plan T057: set when a human edits a proposed
+    # record's fields before/instead of a plain approve/reject. None until
+    # the first edit.
+    edited_by: str | None = None

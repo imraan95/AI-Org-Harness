@@ -433,11 +433,12 @@ Tasks marked **⚠ research needed** depend on facts about Anarlog's webhook con
 **Test:** Integration test rejects a fixture and asserts its status becomes `rejected`.
 **Status:** Done. Same shape as T055's approve route (404 for unknown id, otherwise update + re-fetch), just `KnowledgeStatus.REJECTED` instead of `ACTIVE` - a status flag via `update_knowledge_status()`, not a delete, matching PRD §20. Full suite in `apps/harness-api`: 21 passed.
 
-### T057 — `POST /knowledge/{id}/edit`
+### T057 — `POST /knowledge/{id}/edit` ✅ COMPLETE
 **Goal:** Human edits a proposed record before it goes active.
 **Start:** T056.
 **Do:** Implement the route accepting field edits, writing them, and setting `edited_by`.
 **Test:** Integration test edits a fixture's `statement` field and confirms the change persists and `edited_by` is set.
+**Status:** Done. Added `edited_by: str | None = None` to `KnowledgeRecord` (didn't exist yet). Added `update_knowledge_fields(id, updates, edited_by)` to `OpenVikingClient` (+ fake + real, real via the same read-modify-write-replace shape as `update_knowledge_status`, merging arbitrary fields instead of just `status`). `POST /knowledge/{id}/edit` takes a small `KnowledgeEditRequest` body - **judgment call**: only `statement`/`topic`/`confidence` are exposed as editable for MVP (not every field - status has its own approve/reject routes, ids/timestamps aren't editable at all), since neither the PRD nor build-plan specify an exact editable-field list. Full suite (`libs/knowledge_model libs/openviking_client apps/harness-api`): 50 passed.
 
 ### T058 — Provenance formatting
 **Goal:** Every knowledge response includes readable source info, not raw ids.
