@@ -620,6 +620,11 @@ Found and fixed a real layout bug while testing: the logout button was placed wi
 **Start:** T048, T064.
 **Do:** Write a single automated pytest: POST a realistic fixture transcript to `ingestion-service` → run the worker → call `search_company_context()` → assert the seeded fact is retrievable with correct provenance.
 **Test:** The test itself passes.
+**Status:** ✅ COMPLETE. Added `scripts/test_e2e_smoke.py` (pytest picks it up via the existing `testpaths = ["apps", "libs", "scripts"]` - no config change needed). Follows the exact same real-OpenViking, in-process-everything-else pattern as `test_worker.py` (webhook POST + single `run_worker_once` pass) and `test_core_query_tools.py`/`test_get_evidence.py` (MCP tools called over an in-memory session, harness-api reached over ASGI) - nothing new invented, just composed. Uses `FakeLLM` for the worker's extract/classify step (matching `test_worker.py`'s own e2e test precedent, and sidestepping the still-open T078 Ollama-contention issue); real Ollama is still exercised for embeddings via ingestion-service's webhook handler, same as every other real-e2e test here.
+
+The provenance check goes past the search tool's source *count* (all list-based tools only show that) by also calling `get_evidence(record.id)` - which does join through to the real meeting - and asserting the actual posted meeting title appears, not a fixture stand-in.
+
+`uv run pytest scripts/test_e2e_smoke.py -v`: 1 passed. Full suite afterward (`uv run pytest -v`): 132 passed, 6 skipped (pre-existing, unrelated), no regressions.
 
 ### T075 — Manual PRD §6 walkthrough (belief evolution)
 **Goal:** Confirm the system updates beliefs rather than overwriting them.
