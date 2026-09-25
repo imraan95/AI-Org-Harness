@@ -4,6 +4,7 @@ T052: also accepts a static service key, for non-user callers.
 T053: GET /decisions, /people, /conflicts - filtered list views.
 T054: GET /context, /context/product, /context/customer, /context/strategy.
 T055: POST /knowledge/{id}/approve.
+T056: POST /knowledge/{id}/reject.
 """
 
 from __future__ import annotations
@@ -114,4 +115,17 @@ async def approve_knowledge(
     if record is None:
         raise HTTPException(status_code=404, detail="knowledge record not found")
     await openviking.update_knowledge_status(knowledge_id, KnowledgeStatus.ACTIVE)
+    return await openviking.get_knowledge_by_id(knowledge_id)
+
+
+@app.post("/knowledge/{knowledge_id}/reject", response_model=KnowledgeRecord)
+async def reject_knowledge(
+    knowledge_id: str,
+    _user: dict = Depends(get_current_user_or_service),
+    openviking: OpenVikingClient = Depends(get_openviking_client),
+) -> KnowledgeRecord:
+    record = await openviking.get_knowledge_by_id(knowledge_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="knowledge record not found")
+    await openviking.update_knowledge_status(knowledge_id, KnowledgeStatus.REJECTED)
     return await openviking.get_knowledge_by_id(knowledge_id)

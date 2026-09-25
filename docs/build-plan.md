@@ -426,11 +426,12 @@ Tasks marked **⚠ research needed** depend on facts about Anarlog's webhook con
 **Test:** Integration test approves a `pending_review` fixture and asserts its status becomes `active`.
 **Status:** Done. 404s for an unknown id (checked via `get_knowledge_by_id` first, matching `GET /knowledge/{id}`'s own pattern), otherwise calls `update_knowledge_status()` and re-fetches to return the updated record. Behind the same `get_current_user_or_service` dependency as every other route. Full suite in `apps/harness-api`: 18 passed.
 
-### T056 — `POST /knowledge/{id}/reject`
+### T056 — `POST /knowledge/{id}/reject` ✅ COMPLETE
 **Goal:** Human rejection marks a record rejected (status flag, not deletion, per PRD §20).
 **Start:** T055.
 **Do:** Implement the route calling `update_knowledge_status(id, "rejected")`.
 **Test:** Integration test rejects a fixture and asserts its status becomes `rejected`.
+**Status:** Done. Same shape as T055's approve route (404 for unknown id, otherwise update + re-fetch), just `KnowledgeStatus.REJECTED` instead of `ACTIVE` - a status flag via `update_knowledge_status()`, not a delete, matching PRD §20. Full suite in `apps/harness-api`: 21 passed.
 
 ### T057 — `POST /knowledge/{id}/edit`
 **Goal:** Human edits a proposed record before it goes active.
