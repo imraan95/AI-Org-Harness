@@ -16,6 +16,9 @@ class _MinimalLLM(LLM):
     async def compare(self, candidate, existing):
         return "new"
 
+    async def match_topic(self, candidate, existing_topics):
+        return None
+
     async def summarise(self, text):
         return ""
 

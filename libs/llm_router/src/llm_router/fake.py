@@ -17,6 +17,7 @@ class FakeLLM(LLM):
         self._next_extract_result: list[dict[str, Any]] = []
         self._next_classify_result: str = ""
         self._next_compare_result: str = ""
+        self._next_match_topic_result: str | None = None
         self._next_summarise_result: str = ""
         self._next_embed_result: list[float] = []
 
@@ -26,6 +27,7 @@ class FakeLLM(LLM):
         self.extract_calls: list[str] = []
         self.classify_calls: list[tuple[str, list[str]]] = []
         self.compare_calls: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
+        self.match_topic_calls: list[tuple[dict[str, Any], list[str]]] = []
         self.summarise_calls: list[str] = []
         self.embed_calls: list[str] = []
 
@@ -40,6 +42,9 @@ class FakeLLM(LLM):
 
     def set_next_compare_result(self, result: str) -> None:
         self._next_compare_result = result
+
+    def set_next_match_topic_result(self, result: str | None) -> None:
+        self._next_match_topic_result = result
 
     def set_next_summarise_result(self, result: str) -> None:
         self._next_summarise_result = result
@@ -64,6 +69,12 @@ class FakeLLM(LLM):
     ) -> str:
         self.compare_calls.append((candidate, existing))
         return self._next_compare_result
+
+    async def match_topic(
+        self, candidate: dict[str, Any], existing_topics: list[str]
+    ) -> str | None:
+        self.match_topic_calls.append((candidate, existing_topics))
+        return self._next_match_topic_result
 
     async def summarise(self, text: str) -> str:
         self.summarise_calls.append(text)

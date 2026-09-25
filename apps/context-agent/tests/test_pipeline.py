@@ -61,13 +61,55 @@ async def test_retrieve_returns_existing_knowledge_for_matching_topic():
 
     candidates = [{"topic": "enterprise_sso", "statement": "..."}]
 
-    results = await _retrieve(client, candidates)
+    # An exact hit here - deliberately not setting a canned match_topic
+    # result on this FakeLLM, so if the pipeline fell through to the LLM
+    # fallback unnecessarily, this test would fail loudly (empty-string
+    # default) rather than silently mask that bug.
+    results = await _retrieve(FakeLLM(), client, candidates)
 
     assert len(results) == 1
     candidate, existing = results[0]
     assert candidate == candidates[0]
     assert len(existing) == 1
     assert existing[0].id == existing_record.id
+
+
+async def test_retrieve_falls_back_to_llm_topic_matching_when_exact_match_misses():
+    """docs/decisions/0008-topic-matching-via-llm-not-openviking-semantic-
+    search.md: a worded-differently topic should still be found via the
+    LLM, not reported as if nothing existing is on this subject."""
+    client = FakeOpenVikingClient()
+    existing_record = _knowledge_record(topic="Enterprise SSO")
+    await client.write_knowledge(existing_record)
+
+    fake_llm = FakeLLM()
+    fake_llm.set_next_match_topic_result("Enterprise SSO")
+    candidates = [{"topic": "SSO for Enterprise Customers", "statement": "..."}]
+
+    results = await _retrieve(fake_llm, client, candidates)
+
+    assert len(results) == 1
+    candidate, existing = results[0]
+    assert len(existing) == 1
+    assert existing[0].id == existing_record.id
+    assert fake_llm.match_topic_calls == [
+        (candidates[0], ["Enterprise SSO"])
+    ]
+
+
+async def test_retrieve_reports_nothing_existing_when_llm_finds_no_topic_match():
+    client = FakeOpenVikingClient()
+    await client.write_knowledge(_knowledge_record(topic="Billing exports"))
+
+    fake_llm = FakeLLM()
+    fake_llm.set_next_match_topic_result(None)
+    candidates = [{"topic": "Mobile push notifications", "statement": "..."}]
+
+    results = await _retrieve(fake_llm, client, candidates)
+
+    assert len(results) == 1
+    _, existing = results[0]
+    assert existing == []
 
 
 async def test_compare_returns_new_without_calling_llm_when_no_existing_knowledge():

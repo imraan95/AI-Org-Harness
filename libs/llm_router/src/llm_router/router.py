@@ -14,6 +14,7 @@ DEFAULT_TASK_TIERS: dict[str, str] = {
     "extract": "small",
     "classify": "small",
     "compare": "large",
+    "match_topic": "large",
     "summarise": "small",
 }
 

@@ -126,11 +126,21 @@ class RealOpenVikingClient(OpenVikingClient):
     async def get_relevant_knowledge(self, topic: str) -> list[KnowledgeRecord]:
         # Every record for a topic lives under one directory we control
         # ourselves (see _record_uri), so an exact glob within that
-        # directory is a precise topic match - no dependence on semantic
-        # embedding quality, unlike a free-text `find`/`search` query.
-        # `context-agent` always calls this with the exact same topic
-        # string a candidate was written under, so exact matching is the
-        # correct behaviour here, not a simplification.
+        # directory is a precise topic match. This intentionally does NOT
+        # fall back to OpenViking's own semantic search/find - tried and
+        # reverted (see docs/decisions/0008-topic-matching-via-llm-not-
+        # openviking-semantic-search.md): our knowledge records are
+        # written as compact JSON, and OpenViking's file-type-based
+        # summarization treats `.json` as code rather than a document,
+        # producing a near-identical generic "structured data record"
+        # description for every single record regardless of its actual
+        # topic - real testing showed this made semantic search return
+        # essentially random matches, not topic-relevant ones. Bridging a
+        # worded-differently topic (e.g. "Enterprise SSO" vs "SSO for
+        # Enterprise Customers") is instead handled one layer up, in
+        # context_agent.pipeline._retrieve, via a real LLM call
+        # (llm_router's `match_topic`) reasoning over plain topic names -
+        # not vector similarity over this store's file structure.
         glob_response = await self._client.post(
             "/api/v1/search/glob",
             json={

@@ -50,7 +50,9 @@ class OllamaLLM(LLM):
             base_url=self._base_url, timeout=300.0
         )
 
-    async def _call(self, prompt: str, *, json_mode: bool = False) -> str:
+    async def _call(
+        self, prompt: str, *, json_mode: bool = False, temperature: float | None = None
+    ) -> str:
         payload: dict[str, Any] = {
             "model": self._model,
             "prompt": prompt,
@@ -61,6 +63,15 @@ class OllamaLLM(LLM):
             # syntactically valid JSON - small models otherwise sometimes
             # produce near-JSON with a missing brace/comma.
             payload["format"] = "json"
+        if temperature is not None:
+            # Ollama's default sampling is stochastic (not deterministic)
+            # even for the same exact prompt - fine for extract's more
+            # open-ended job, but a yes/no judgment call (match_topic)
+            # should give the same answer to the same question every
+            # time, not vary run to run. Discovered live: the same
+            # match_topic prompt answered "yes" once and "no" on a later
+            # run with no other change.
+            payload["options"] = {"temperature": temperature}
 
         response = await self._client.post("/api/generate", json=payload)
         response.raise_for_status()
@@ -121,6 +132,42 @@ class OllamaLLM(LLM):
         )
         raw = await self._call(prompt)
         return raw.strip().lower()
+
+    async def match_topic(
+        self, candidate: dict[str, Any], existing_topics: list[str]
+    ) -> str | None:
+        # docs/decisions/0008-topic-matching-via-llm-not-openviking-
+        # semantic-search.md: context_agent.pipeline._retrieve calls this
+        # only when an exact-string topic lookup already came up empty -
+        # it's asking "is this actually the same real-world topic as one
+        # of these, just worded differently", not a first-pass search.
+        # Real testing showed OpenViking's own semantic search returning
+        # essentially random matches for our JSON-shaped records, so this
+        # asks the model directly instead of relying on vector similarity
+        # over that store's file structure.
+        #
+        # Asked pairwise (one yes/no question per existing topic), not as
+        # a single "pick one from this list" prompt - real testing found
+        # this model size answers a single yes/no reliably, but got
+        # markedly less reliable (defaulting to "none" even on an obvious
+        # match) once asked to choose among several options at once.
+        # More calls per candidate when there are several existing
+        # topics, but far more accurate at this model size - revisit if
+        # the number of existing topics ever grows enough for this to be
+        # too slow.
+        for existing_topic in existing_topics:
+            prompt = (
+                "Do these two phrases refer to the same real-world "
+                "subject, just worded differently (e.g. \"Enterprise "
+                "SSO\" and \"SSO for Enterprise Customers\" are the same "
+                "subject)? Reply with ONLY \"yes\" or \"no\".\n\n"
+                f"Phrase 1: {candidate.get('topic', '')}\n"
+                f"Phrase 2: {existing_topic}"
+            )
+            raw = (await self._call(prompt, temperature=0.0)).strip().lower()
+            if raw.startswith("yes"):
+                return existing_topic
+        return None
 
     async def summarise(self, text: str) -> str:
         raise NotImplementedError("OllamaLLM.summarise is not wired up yet")

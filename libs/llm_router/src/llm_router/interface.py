@@ -27,6 +27,11 @@ class LLM(ABC):
     ) -> str: ...
 
     @abstractmethod
+    async def match_topic(
+        self, candidate: dict[str, Any], existing_topics: list[str]
+    ) -> str | None: ...
+
+    @abstractmethod
     async def summarise(self, text: str) -> str: ...
 
     @abstractmethod

@@ -21,12 +21,28 @@ async def _extract(llm: LLM, transcript: Transcript) -> list[dict[str, Any]]:
 
 
 async def _retrieve(
-    openviking: OpenVikingClient, candidates: list[dict[str, Any]]
+    llm: LLM, openviking: OpenVikingClient, candidates: list[dict[str, Any]]
 ) -> list[tuple[dict[str, Any], list[KnowledgeRecord]]]:
-    """For each candidate, pull existing knowledge on the same topic."""
+    """For each candidate, pull existing knowledge on the same topic.
+
+    Tries an exact topic-string match first (cheap, and precise whenever
+    it hits). If that comes up empty, the candidate's own topic might
+    just be worded differently from an earlier meeting's for the same
+    real-world subject - docs/decisions/0008-topic-matching-via-llm-not-
+    openviking-semantic-search.md found OpenViking's own semantic search
+    unreliable for bridging that gap on our JSON-shaped records, so this
+    asks the LLM directly whether any existing topic is the same subject
+    before concluding there's genuinely nothing existing on this topic.
+    """
     results: list[tuple[dict[str, Any], list[KnowledgeRecord]]] = []
     for candidate in candidates:
         existing = await openviking.get_relevant_knowledge(candidate["topic"])
+        if not existing:
+            all_records = await openviking.list_all()
+            existing_topics = sorted({record.topic for record in all_records})
+            matched_topic = await llm.match_topic(candidate, existing_topics)
+            if matched_topic is not None:
+                existing = [r for r in all_records if r.topic == matched_topic]
         results.append((candidate, existing))
     return results
 
@@ -187,7 +203,7 @@ async def process_transcript(
         transcript.id,
     )
 
-    candidates_with_existing = await _retrieve(openviking, candidates)
+    candidates_with_existing = await _retrieve(llm, openviking, candidates)
     logger.info(
         "Retrieved existing knowledge for %d candidate(s)",
         len(candidates_with_existing),

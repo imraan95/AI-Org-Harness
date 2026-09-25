@@ -60,6 +60,11 @@ class FrontierLLM(LLM):
     ) -> str:
         raise NotImplementedError("FrontierLLM.compare is not wired up yet")
 
+    async def match_topic(
+        self, candidate: dict[str, Any], existing_topics: list[str]
+    ) -> str | None:
+        raise NotImplementedError("FrontierLLM.match_topic is not wired up yet")
+
     async def summarise(self, text: str) -> str:
         raise NotImplementedError("FrontierLLM.summarise is not wired up yet")
 

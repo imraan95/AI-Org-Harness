@@ -153,7 +153,7 @@ Nothing outside `vendor/openviking` reads or writes its storage directly. All ac
 
 The core processing pipeline described in PRD §3, §6, §9. A polling worker (no HTTP surface required, though a thin FastAPI health endpoint is fine to add) that, for each queued transcript:
 
-1. **Retrieve** — call `openviking_client.get_relevant_knowledge()` for the transcript's topics.
+1. **Retrieve** — call `openviking_client.get_relevant_knowledge()` for the transcript's topics (an exact topic-string match). If that comes up empty, falls back to `llm_router.match_topic()` - asking the model directly whether any existing topic is the same real-world subject, worded differently (docs/decisions/0008) - rather than OpenViking's own semantic search, which real testing found unreliable for our JSON-shaped records.
 2. **Extract** — `llm_router.extract()` pulls out decisions, facts, customer insights, actions, people/ownership, candidate topics.
 3. **Compare** — `llm_router.compare()` checks each candidate against retrieved knowledge: new / corroborating / superseding / contradicting.
 4. **Classify** — assigns `type`, `confidence` (PRD §10 rules), `status`.

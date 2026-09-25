@@ -46,6 +46,27 @@ async def test_compare_returns_one_of_the_four_relationships():
     assert result in ["new", "corroborating", "superseding", "contradicting"]
 
 
+async def test_match_topic_finds_a_worded_differently_existing_topic():
+    llm = OllamaLLM()
+    result = await llm.match_topic(
+        {
+            "topic": "SSO for Enterprise Customers",
+            "statement": "Three enterprise customers have asked for SSO.",
+        },
+        ["Enterprise SSO", "Mobile app redesign", "Billing exports"],
+    )
+    assert result == "Enterprise SSO"
+
+
+async def test_match_topic_returns_none_when_nothing_existing_is_the_same_subject():
+    llm = OllamaLLM()
+    result = await llm.match_topic(
+        {"topic": "Mobile push notifications", "statement": "Users want push alerts."},
+        ["Enterprise SSO", "Billing exports"],
+    )
+    assert result is None
+
+
 async def test_embed_returns_a_nonempty_vector_of_floats():
     llm = OllamaLLM()
     result = await llm.embed("Three enterprise customers have asked for SSO.")
