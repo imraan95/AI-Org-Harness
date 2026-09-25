@@ -491,11 +491,12 @@ Tasks marked **⚠ research needed** depend on facts about Anarlog's webhook con
 **Test:** Same pattern as T062, one per tool.
 **Status:** Done. `get_current_strategy` → `GET /context/strategy`, `get_product_context` → `GET /context/product`, `get_conflicting_information` → `GET /conflicts`. `get_person_context` → `GET /people` - **judgment call**: there's no `/context/person` route (architecture.md's REST list only has `/context/product`, `/context/customer`, `/context/strategy`), so this maps to the standalone `/people` route instead, the closest existing match. All 8 PRD §14 MCP tools now exist. `apps/mcp-server` full suite: 9 passed.
 
-### T064 — Provenance-formatted answers
+### T064 — Provenance-formatted answers ✅ COMPLETE
 **Goal:** Tool output reads like the PRD §15 example, not raw JSON.
 **Start:** T063.
 **Do:** Format each tool's response as prose with an evidence list and any flagged tension, matching PRD §15's structure.
 **Test:** Snapshot test comparing output structure (sections present, not exact wording) to the PRD §15 example.
+**Status:** Done. **By explicit user decision**, `mcp_server.formatting.format_answer()` is a deterministic template - no LLM call - producing a "Current understanding:" section (joined statements), an "Evidence:" section (real meeting titles when a record carries `sources` from T058's `/knowledge/{id}` join, otherwise a per-record source count), and a "tension" sentence appended only when any record is `status: conflicting` or carries `conflicts_with`. All 8 MCP tools' return type changed from raw JSON (`dict`/`list[dict]`) to `str`, calling `format_answer()` before returning - a real, deliberate breaking change to T061-T063's tool contracts, not an addition alongside them. Rewrote T061-T063's tests: `get_evidence` (single-record) still compares exactly against `format_answer()` of the direct REST response; the multi-record tools (T062/T063) switched from exact-JSON/exact-string equality to structural assertions (sections present, seeded statement/topic appear) - a second live list call can return the same records in a different order (the already-documented grep ordering gap), which would make formatted *text* differ even though the data is identical. New `test_formatting.py` unit-tests `format_answer()` directly against PRD §15's section structure. `apps/mcp-server` full suite: 13 passed.
 
 ### T065 — Manual Claude walkthrough
 **Goal:** Confirm the whole MCP surface works from an actual Claude client.

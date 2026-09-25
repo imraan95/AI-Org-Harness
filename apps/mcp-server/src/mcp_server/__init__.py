@@ -1,4 +1,5 @@
 from .client import HarnessAPIClient
+from .formatting import format_answer
 from .server import (
     get_conflicting_information,
     get_current_strategy,
@@ -24,4 +25,5 @@ __all__ = [
     "get_person_context",
     "get_conflicting_information",
     "HarnessAPIClient",
+    "format_answer",
 ]

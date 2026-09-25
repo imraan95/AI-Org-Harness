@@ -2,6 +2,8 @@
 an in-process harness-api over ASGI (same in-process-HTTP approach
 harness-api's own tests use via FastAPI's TestClient - avoids needing a
 second real uvicorn process running just for this test).
+T064: output is now `format_answer()`'s prose, not raw JSON - compares
+against calling that same formatter directly on the REST response.
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ from openviking_client import RealOpenVikingClient
 
 import mcp_server.server as server_module
 from mcp_server.client import HarnessAPIClient
+from mcp_server.formatting import format_answer
 from mcp_server.server import mcp
 
 OPENVIKING_BASE_URL = os.environ.get("OPENVIKING_BASE_URL", "http://127.0.0.1:1933")
@@ -90,7 +93,7 @@ async def test_get_evidence_matches_a_direct_rest_call(monkeypatch):
 
     assert not result.isError
     assert direct_response.status_code == 200
-    assert result.structuredContent == direct_response.json()
+    assert result.structuredContent["result"] == format_answer([direct_response.json()])
 
 
 async def test_get_evidence_returns_an_error_for_an_unknown_id(monkeypatch):

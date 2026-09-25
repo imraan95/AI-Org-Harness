@@ -1,6 +1,12 @@
 """T062: `search_company_context`, `get_recent_decisions`,
 `get_customer_insights` against a REAL running OpenViking, calling an
 in-process harness-api over ASGI - same approach as test_get_evidence.py.
+T064: output is now `format_answer()`'s prose. These check structure
+(sections present, seeded statement/topic appear) rather than exact
+string equality against a separately-refetched list - a second live
+`GET` can come back in a different order (grep-based, no ordering
+guarantee - see docs/research/openviking.md), which would make the
+*text* differ even though the underlying records are identical.
 """
 
 from __future__ import annotations
@@ -63,10 +69,6 @@ def _asgi_harness_api_client() -> httpx.AsyncClient:
     )
 
 
-def _sorted_by_id(records: list[dict]) -> list[dict]:
-    return sorted(records, key=lambda r: r["id"])
-
-
 async def _seed(record: KnowledgeRecord) -> None:
     openviking = RealOpenVikingClient()
     try:
@@ -75,8 +77,9 @@ async def _seed(record: KnowledgeRecord) -> None:
         await openviking.aclose()
 
 
-async def test_search_company_context_matches_a_direct_rest_call(monkeypatch):
-    await _seed(_fixture_record(type="decision", statement="We picked X."))
+async def test_search_company_context_has_expected_structure(monkeypatch):
+    record = _fixture_record(type="decision", statement="We picked X.")
+    await _seed(record)
 
     monkeypatch.setattr(
         server_module,
@@ -86,21 +89,15 @@ async def test_search_company_context_matches_a_direct_rest_call(monkeypatch):
     async with create_connected_server_and_client_session(mcp) as client:
         result = await client.call_tool("search_company_context", {})
 
-    comparison_client = _asgi_harness_api_client()
-    direct_response = await comparison_client.get("/context")
-    await comparison_client.aclose()
-
     assert not result.isError
-    assert direct_response.status_code == 200
-    # Sorted by id - list ordering isn't a guaranteed contract of these
-    # endpoints (grep-based, per docs/research/openviking.md), so this
-    # compares the same set of records, not a specific order.
-    assert _sorted_by_id(result.structuredContent["result"]) == _sorted_by_id(
-        direct_response.json()
-    )
+    answer = result.structuredContent["result"]
+    assert answer.startswith("Current understanding:")
+    assert "Evidence:" in answer
+    assert "We picked X." in answer
+    assert record.topic in answer
 
 
-async def test_get_recent_decisions_matches_a_direct_rest_call(monkeypatch):
+async def test_get_recent_decisions_has_expected_structure(monkeypatch):
     decision = _fixture_record(type="decision", statement="We picked X.")
     await _seed(decision)
 
@@ -112,19 +109,14 @@ async def test_get_recent_decisions_matches_a_direct_rest_call(monkeypatch):
     async with create_connected_server_and_client_session(mcp) as client:
         result = await client.call_tool("get_recent_decisions", {})
 
-    comparison_client = _asgi_harness_api_client()
-    direct_response = await comparison_client.get("/decisions")
-    await comparison_client.aclose()
-
     assert not result.isError
-    assert direct_response.status_code == 200
-    assert _sorted_by_id(result.structuredContent["result"]) == _sorted_by_id(
-        direct_response.json()
-    )
-    assert decision.id in {r["id"] for r in result.structuredContent["result"]}
+    answer = result.structuredContent["result"]
+    assert answer.startswith("Current understanding:")
+    assert "Evidence:" in answer
+    assert "We picked X." in answer
 
 
-async def test_get_customer_insights_matches_a_direct_rest_call(monkeypatch):
+async def test_get_customer_insights_has_expected_structure(monkeypatch):
     insight = _fixture_record(type="customer_insight", statement="Customers want Y.")
     await _seed(insight)
 
@@ -136,13 +128,8 @@ async def test_get_customer_insights_matches_a_direct_rest_call(monkeypatch):
     async with create_connected_server_and_client_session(mcp) as client:
         result = await client.call_tool("get_customer_insights", {})
 
-    comparison_client = _asgi_harness_api_client()
-    direct_response = await comparison_client.get("/context/customer")
-    await comparison_client.aclose()
-
     assert not result.isError
-    assert direct_response.status_code == 200
-    assert _sorted_by_id(result.structuredContent["result"]) == _sorted_by_id(
-        direct_response.json()
-    )
-    assert insight.id in {r["id"] for r in result.structuredContent["result"]}
+    answer = result.structuredContent["result"]
+    assert answer.startswith("Current understanding:")
+    assert "Evidence:" in answer
+    assert "Customers want Y." in answer

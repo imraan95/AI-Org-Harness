@@ -1,6 +1,9 @@
 """T063: `get_current_strategy`, `get_product_context`, `get_person_context`,
 `get_conflicting_information` against a REAL running OpenViking, calling an
 in-process harness-api over ASGI - same approach as test_get_evidence.py.
+T064: output is now `format_answer()`'s prose - see the note in
+test_core_query_tools.py on why these check structure, not exact
+string equality against a separately-refetched list.
 """
 
 from __future__ import annotations
@@ -55,10 +58,6 @@ def _fixture_record(*, type: str, statement: str, status: str = "active") -> Kno
     )
 
 
-def _sorted_by_id(records: list[dict]) -> list[dict]:
-    return sorted(records, key=lambda r: r["id"])
-
-
 def _asgi_harness_api_client() -> httpx.AsyncClient:
     return httpx.AsyncClient(
         transport=httpx.ASGITransport(app=harness_api_app),
@@ -75,7 +74,7 @@ async def _seed(record: KnowledgeRecord) -> None:
         await openviking.aclose()
 
 
-async def _run_tool_and_compare(monkeypatch, tool_name: str, rest_path: str) -> tuple[dict, dict]:
+async def _run_tool(monkeypatch, tool_name: str) -> str:
     monkeypatch.setattr(
         server_module,
         "_client_factory",
@@ -84,53 +83,52 @@ async def _run_tool_and_compare(monkeypatch, tool_name: str, rest_path: str) -> 
     async with create_connected_server_and_client_session(mcp) as client:
         result = await client.call_tool(tool_name, {})
 
-    comparison_client = _asgi_harness_api_client()
-    direct_response = await comparison_client.get(rest_path)
-    await comparison_client.aclose()
-
     assert not result.isError
-    assert direct_response.status_code == 200
-    assert _sorted_by_id(result.structuredContent["result"]) == _sorted_by_id(
-        direct_response.json()
-    )
-    return result.structuredContent, direct_response.json()
+    return result.structuredContent["result"]
 
 
-async def test_get_current_strategy_matches_a_direct_rest_call(monkeypatch):
+async def test_get_current_strategy_has_expected_structure(monkeypatch):
     strategy = _fixture_record(type="strategy", statement="Focus on enterprise.")
     await _seed(strategy)
 
-    structured, _ = await _run_tool_and_compare(
-        monkeypatch, "get_current_strategy", "/context/strategy"
-    )
-    assert strategy.id in {r["id"] for r in structured["result"]}
+    answer = await _run_tool(monkeypatch, "get_current_strategy")
+
+    assert answer.startswith("Current understanding:")
+    assert "Evidence:" in answer
+    assert "Focus on enterprise." in answer
 
 
-async def test_get_product_context_matches_a_direct_rest_call(monkeypatch):
+async def test_get_product_context_has_expected_structure(monkeypatch):
     product = _fixture_record(type="product_requirement", statement="Needs SSO.")
     await _seed(product)
 
-    structured, _ = await _run_tool_and_compare(
-        monkeypatch, "get_product_context", "/context/product"
-    )
-    assert product.id in {r["id"] for r in structured["result"]}
+    answer = await _run_tool(monkeypatch, "get_product_context")
+
+    assert answer.startswith("Current understanding:")
+    assert "Evidence:" in answer
+    assert "Needs SSO." in answer
 
 
-async def test_get_person_context_matches_a_direct_rest_call(monkeypatch):
+async def test_get_person_context_has_expected_structure(monkeypatch):
     person = _fixture_record(type="person", statement="Alice owns onboarding.")
     await _seed(person)
 
-    structured, _ = await _run_tool_and_compare(monkeypatch, "get_person_context", "/people")
-    assert person.id in {r["id"] for r in structured["result"]}
+    answer = await _run_tool(monkeypatch, "get_person_context")
+
+    assert answer.startswith("Current understanding:")
+    assert "Evidence:" in answer
+    assert "Alice owns onboarding." in answer
 
 
-async def test_get_conflicting_information_matches_a_direct_rest_call(monkeypatch):
+async def test_get_conflicting_information_has_expected_structure(monkeypatch):
     conflicting = _fixture_record(
         type="fact", statement="Two versions disagree.", status="conflicting"
     )
     await _seed(conflicting)
 
-    structured, _ = await _run_tool_and_compare(
-        monkeypatch, "get_conflicting_information", "/conflicts"
-    )
-    assert conflicting.id in {r["id"] for r in structured["result"]}
+    answer = await _run_tool(monkeypatch, "get_conflicting_information")
+
+    assert answer.startswith("Current understanding:")
+    assert "Evidence:" in answer
+    assert "Two versions disagree." in answer
+    assert "tension" in answer
