@@ -447,11 +447,12 @@ Tasks marked **⚠ research needed** depend on facts about Anarlog's webhook con
 **Test:** Integration test asserts `/knowledge/{id}` includes a `sources` array with real meeting titles/dates.
 **Status:** Done, plus a real upstream bug found and fixed. `GET /knowledge/{id}` now returns `KnowledgeRecordWithSources` (a `KnowledgeRecord` plus `sources: list[Source]`), joining each `source_ids` entry to `transcripts` via a fresh-per-request DB session (same event-loop-safety pattern as `openviking`). Scoped to `/knowledge/{id}` only, not the list endpoints - that's what the build-plan's own test wording asks for. **Real bug found while wiring this up**: `context_agent.pipeline._write()` never actually populated `source_ids` from a real transcript - `llm.extract()` only ever returns `topic`/`statement`, so every real (non-test-fixture) knowledge record was silently written with `source_ids=[]`, which would have made this feature a no-op against real data. Fixed by threading `transcript.id` through `process_transcript()` into `_write()` as the source id, `.get(...)` still winning if a future `extract()` ever returns something finer-grained (e.g. chunk-level). `harness-api` gained a `db` workspace dependency. Full suite: 104 passed, 7 failed - all 7 are `httpx.ReadTimeout` from the pre-existing Ollama/OpenViking contention (`infra/README.md`), not a regression; the scoped `apps/harness-api` run was 26/26 green.
 
-### T059 — `GET /knowledge/{id}/history`
+### T059 — `GET /knowledge/{id}/history` ✅ COMPLETE
 **Goal:** Walk the `supersedes` chain.
 **Start:** T058.
 **Do:** Implement the endpoint, following `supersedes` backward from the given id.
 **Test:** Integration test seeds a 3-link chain, calls the endpoint on the newest id, asserts all 3 come back in order.
+**Status:** Done. Returns newest-to-oldest (the order implied by "calls the endpoint on the newest id... asserts all 3 come back in order" - starts at the given record, follows `supersedes` backward). A `visited` id set guards against an invalid cycle in the data turning this into an infinite loop - shouldn't happen given how `supersedes` is written elsewhere, but cheap to guard against. Full suite in `apps/harness-api`: 30 passed.
 
 ### T060 — Generate a typed frontend client from the OpenAPI schema
 **Goal:** Give `apps/web` typed access to `harness-api` without hand-written types.

@@ -7,6 +7,7 @@ T055: POST /knowledge/{id}/approve.
 T056: POST /knowledge/{id}/reject.
 T057: POST /knowledge/{id}/edit.
 T058: GET /knowledge/{id} includes a `sources` array (meeting title/date).
+T059: GET /knowledge/{id}/history - walk the supersedes chain.
 """
 
 from __future__ import annotations
@@ -95,6 +96,32 @@ async def get_knowledge(
                 )
             )
     return KnowledgeRecordWithSources(**record.model_dump(), sources=sources)
+
+
+@app.get("/knowledge/{knowledge_id}/history", response_model=list[KnowledgeRecord])
+async def get_knowledge_history(
+    knowledge_id: str,
+    _user: dict = Depends(get_current_user_or_service),
+    openviking: OpenVikingClient = Depends(get_openviking_client),
+) -> list[KnowledgeRecord]:
+    record = await openviking.get_knowledge_by_id(knowledge_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="knowledge record not found")
+
+    # Newest-to-oldest, following `supersedes` backward. `visited` guards
+    # against an (invalid, shouldn't-happen) cycle in the data turning this
+    # into an infinite loop.
+    history = [record]
+    visited = {record.id}
+    current = record
+    while current.supersedes and current.supersedes not in visited:
+        previous = await openviking.get_knowledge_by_id(current.supersedes)
+        if previous is None:
+            break
+        history.append(previous)
+        visited.add(previous.id)
+        current = previous
+    return history
 
 
 @app.get("/decisions", response_model=list[KnowledgeRecord])
