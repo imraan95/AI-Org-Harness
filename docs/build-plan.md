@@ -585,6 +585,9 @@ Found and fixed a real layout bug while testing: the logout button was placed wi
 **Start:** T069, T058.
 **Do:** Wire this pane to a knowledge item's `sources` field.
 **Test:** Manual — select a seeded item; confirm the correct meeting titles/dates render.
+**Status:** ✅ COMPLETE. `harness-api` only attaches `sources` to the single-item route `GET /knowledge/{id}` (T058) - `/context` and the other list routes return plain `KnowledgeRecord`s with no sources - so this pane is select-then-view rather than list-everything: a left-hand list of every topic (from the cheap `/context` call) links to `/sources?id=<record id>` via plain Next.js `<Link>`s (a `searchParams` Server Component, no client JS needed), and only the selected id triggers the `GET /knowledge/{id}` call that returns its `sources` array.
+
+`npx tsc --noEmit`: clean. Verified live in the browser: the list renders every record's topic (same accumulated-test-fixture noise as T070/T071 - not a defect here); selecting a real T066 e2e-walkthrough record via direct URL, and separately via clicking its actual rendered link, both correctly showed its statement and real supporting meeting ("Support/Account team sync - CSV export requests" with its real date) - confirming both the data path and the in-app navigation work, not just the initial render.
 
 ### T073 — Harness pane
 **Goal:** Show "what an AI would retrieve" for a typed topic.
