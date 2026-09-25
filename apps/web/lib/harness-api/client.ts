@@ -5,6 +5,8 @@
 // end to end with no hand-written request/response types.
 import createClient from "openapi-fetch";
 
+import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+
 import type { paths } from "./schema";
 
 const BASE_URL = process.env.NEXT_PUBLIC_HARNESS_API_BASE_URL ?? "http://127.0.0.1:8001";
@@ -18,4 +20,15 @@ export function createHarnessApiClient(accessToken?: string) {
     baseUrl: BASE_URL,
     headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
   });
+}
+
+// T070: every Server Component pane needs the same two steps (get the
+// logged-in user's session, then build a client with its token) - this
+// collapses that into one call so panes don't repeat it.
+export async function getHarnessApiClient() {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  return createHarnessApiClient(session?.access_token);
 }

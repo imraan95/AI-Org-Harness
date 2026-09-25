@@ -567,6 +567,9 @@ Found and fixed a real layout bug while testing: the logout button was placed wi
 **Start:** T069, T060, T054.
 **Do:** Wire this pane to `harness-api`'s `/context/*` endpoints (via the generated client, attaching the Supabase session token), grouped per PRD §16.
 **Test:** Manual — with seeded fixtures, confirm each category renders the right records.
+**Status:** ✅ COMPLETE. `harness-api`'s endpoints don't map 1:1 onto PRD §16.A's 4 labels, so this mapping is a judgment call, not a strict correspondence: "What customers are saying" -> `GET /context/customer` directly; "What we decided" -> `GET /decisions`; "What we know" -> `GET /context/product` + `GET /context/strategy` combined; "What changed" -> `GET /context`, filtered client-side for records whose `supersedes` is set (no dedicated "changed" endpoint exists yet). Added `getHarnessApiClient()` to `lib/harness-api/client.ts` (T060's client, now doing the "get Supabase session -> attach its token" step once so every pane doesn't repeat it) and built the pane as an async Server Component fetching all 5 calls in parallel via `Promise.all`.
+
+`npx tsc --noEmit`: clean. Verified live in the browser (logged in as the real test user): all 4 sections render real records correctly grouped - the T066 walkthrough's CSV-export fixture correctly appears under "What we know" (it's `product_requirement`), the PRD §15 SSO customer insight under "What customers are saying", the T066 supersession pair under "What changed", and decision fixtures under "What we decided". Noisy with accumulated test fixtures (same already-documented "no test/production separation in OpenViking" gap from T065's status note) - not a defect in this pane.
 
 ### T071 — Conflicts pane with approve/edit/reject
 **Goal:** The human-in-the-loop review surface.
