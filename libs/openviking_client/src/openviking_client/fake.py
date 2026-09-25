@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from knowledge_model import KnowledgeRecord, KnowledgeStatus, KnowledgeType
 
 from .interface import OpenVikingClient
@@ -51,5 +53,16 @@ class FakeOpenVikingClient(OpenVikingClient):
             if record.id == knowledge_id:
                 self._records[i] = record.model_copy(
                     update={**updates, "edited_by": edited_by}
+                )
+                return
+
+    async def mark_superseded(self, knowledge_id: str, superseded_at: datetime) -> None:
+        for i, record in enumerate(self._records):
+            if record.id == knowledge_id:
+                self._records[i] = record.model_copy(
+                    update={
+                        "status": KnowledgeStatus.SUPERSEDED,
+                        "superseded_at": superseded_at,
+                    }
                 )
                 return

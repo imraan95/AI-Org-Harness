@@ -175,6 +175,23 @@ async def test_list_all_includes_records_across_different_topics():
     await client.aclose()
 
 
+async def test_mark_superseded_sets_status_and_timestamp():
+    client = RealOpenVikingClient()
+    record = _knowledge_record(topic=f"mark_superseded_{uuid.uuid4().hex[:8]}")
+    await client.write_knowledge(record)
+
+    when = datetime.now(timezone.utc)
+    await client.mark_superseded(record.id, when)
+    refetched = await client.get_knowledge_by_id(record.id)
+
+    assert refetched is not None
+    assert refetched.status == KnowledgeStatus.SUPERSEDED
+    assert refetched.superseded_at is not None
+    assert refetched.superseded_at.timestamp() == pytest.approx(when.timestamp())
+
+    await client.aclose()
+
+
 async def test_permissions_scaffold_fields_round_trip():
     """T039: workspace_id/etc. are just ordinary KnowledgeRecord fields now
     (ADR 0003) - confirm they survive a real write/read cycle like any

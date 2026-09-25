@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+from datetime import datetime
 
 import httpx
 
@@ -235,6 +236,26 @@ class RealOpenVikingClient(OpenVikingClient):
             return
         record = await self._read_record(uri)
         updated = record.model_copy(update={**updates, "edited_by": edited_by})
+        response = await self._client.post(
+            "/api/v1/content/write",
+            json={
+                "uri": uri,
+                "content": updated.model_dump_json(),
+                "mode": "replace",
+                "wait": False,
+            },
+        )
+        self._unwrap(response)
+
+    async def mark_superseded(self, knowledge_id: str, superseded_at: datetime) -> None:
+        # Same read-modify-write-via-replace shape as update_knowledge_status.
+        uri = await self._find_uri_by_id(knowledge_id)
+        if uri is None:
+            return
+        record = await self._read_record(uri)
+        updated = record.model_copy(
+            update={"status": KnowledgeStatus.SUPERSEDED, "superseded_at": superseded_at}
+        )
         response = await self._client.post(
             "/api/v1/content/write",
             json={

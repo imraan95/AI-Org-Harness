@@ -26,6 +26,9 @@ class _MinimalClient(OpenVikingClient):
     async def update_knowledge_fields(self, knowledge_id, updates, edited_by):
         pass
 
+    async def mark_superseded(self, knowledge_id, superseded_at):
+        pass
+
 
 def test_subclass_implementing_all_methods_can_be_instantiated():
     instance = _MinimalClient()

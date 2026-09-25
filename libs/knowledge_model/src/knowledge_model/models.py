@@ -22,6 +22,10 @@ class KnowledgeRecord(BaseModel):
     observed_at: datetime
     last_updated_at: datetime
     supersedes: str | None = None
+    # T066: set on the OLD record when a newer one supersedes it (paired
+    # with that new record's own `supersedes` pointing back). None until
+    # a record is actually superseded.
+    superseded_at: datetime | None = None
 
     # PRD §9/§17, build-plan T042: when Compare finds a candidate
     # contradicts existing knowledge, it's written with

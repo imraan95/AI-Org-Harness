@@ -268,6 +268,55 @@ async def test_full_pipeline_writes_a_conflict_record_when_llm_says_contradictin
     assert [c.id for c in conflicts] == [record.id]
 
 
+async def test_second_transcript_superseding_the_first_links_and_statuses_both_records():
+    """T066: two sequential transcripts on the same topic where the second
+    supersedes the first - the new record should point back at the old one
+    via `supersedes`, and the old record should end up `superseded` with a
+    `superseded_at` timestamp, rather than the "superseding" relationship
+    being silently dropped (as it was before T066)."""
+    client = FakeOpenVikingClient()
+    fake_llm = FakeLLM()
+
+    fake_llm.set_next_extract_result(
+        [
+            {
+                "topic": "enterprise_sso",
+                "statement": "SSO is an occasional customer request",
+                "source_context": "customer_statement",
+            }
+        ]
+    )
+    fake_llm.set_next_classify_result("customer_insight")
+    first_written = await process_transcript(_transcript(), fake_llm, client)
+    assert len(first_written) == 1
+    first_record = first_written[0]
+    assert first_record.status == KnowledgeStatus.ACTIVE
+    assert first_record.superseded_at is None
+
+    fake_llm.set_next_extract_result(
+        [
+            {
+                "topic": "enterprise_sso",
+                "statement": "SSO is now a recurring, escalating customer request",
+                "source_context": "customer_statement",
+            }
+        ]
+    )
+    fake_llm.set_next_compare_result("superseding")
+    fake_llm.set_next_classify_result("customer_insight")
+    second_written = await process_transcript(_transcript(), fake_llm, client)
+
+    assert len(second_written) == 1
+    second_record = second_written[0]
+    assert second_record.supersedes == first_record.id
+    assert second_record.status == KnowledgeStatus.ACTIVE
+
+    superseded_first = await client.get_knowledge_by_id(first_record.id)
+    assert superseded_first is not None
+    assert superseded_first.status == KnowledgeStatus.SUPERSEDED
+    assert superseded_first.superseded_at is not None
+
+
 async def test_first_ever_mention_of_a_topic_is_written_with_no_supersedes_link():
     """T041: a brand-new topic (nothing in OpenViking about it yet) should
     be written cleanly as new knowledge, with no `supersedes` link."""

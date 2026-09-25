@@ -137,6 +137,19 @@ async def _write(
         )
 
         now = datetime.now(timezone.utc)
+
+        # T066: a "superseding" candidate replaces the prior understanding
+        # of this topic rather than merely adding to or conflicting with
+        # it. `supersedes` is a singular field, and the build-plan's own
+        # test scope only ever considers one prior record on a topic, so
+        # `existing[0]` (documented simplification) is used as the
+        # superseded record when there is one.
+        supersedes = (
+            existing[0].id if relationship == "superseding" and existing else None
+        )
+        if supersedes is not None:
+            await openviking.mark_superseded(supersedes, now)
+
         record = KnowledgeRecord(
             id=f"K-{uuid.uuid4()}",
             type=item["type"],
@@ -146,6 +159,7 @@ async def _write(
             confidence=confidence,
             source_ids=item.get("source_ids") or ([transcript_id] if transcript_id else []),
             people=item.get("people", []),
+            supersedes=supersedes,
             created_at=now,
             observed_at=now,
             last_updated_at=now,

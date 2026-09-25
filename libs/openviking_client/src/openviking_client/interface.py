@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from datetime import datetime
 
 from knowledge_model import KnowledgeRecord, KnowledgeStatus, KnowledgeType
 
@@ -42,3 +43,6 @@ class OpenVikingClient(ABC):
     async def update_knowledge_fields(
         self, knowledge_id: str, updates: dict, edited_by: str
     ) -> None: ...
+
+    @abstractmethod
+    async def mark_superseded(self, knowledge_id: str, superseded_at: datetime) -> None: ...

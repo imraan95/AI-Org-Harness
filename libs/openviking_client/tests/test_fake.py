@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from knowledge_model import KnowledgeRecord, KnowledgeType
+from knowledge_model import KnowledgeRecord, KnowledgeStatus, KnowledgeType
 
 from openviking_client import FakeOpenVikingClient
 
@@ -70,6 +70,19 @@ async def test_update_knowledge_fields_persists_and_sets_edited_by():
     assert refetched is not None
     assert refetched.statement == "Edited statement."
     assert refetched.edited_by == "alice@rms.test"
+
+
+async def test_mark_superseded_sets_status_and_timestamp():
+    client = FakeOpenVikingClient()
+    record = _record()
+    await client.write_knowledge(record)
+
+    when = datetime.now(timezone.utc)
+    await client.mark_superseded(record.id, when)
+    refetched = await client.get_knowledge_by_id(record.id)
+
+    assert refetched.status == KnowledgeStatus.SUPERSEDED
+    assert refetched.superseded_at == when
 
 
 async def test_list_all_returns_every_written_record():
