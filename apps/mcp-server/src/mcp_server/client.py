@@ -45,5 +45,19 @@ class HarnessAPIClient:
         response.raise_for_status()
         return response.json()
 
+    async def _get_list(self, path: str) -> list[dict[str, Any]]:
+        response = await self._client.get(path)
+        response.raise_for_status()
+        return response.json()
+
+    async def get_context(self) -> list[dict[str, Any]]:
+        return await self._get_list("/context")
+
+    async def get_decisions(self) -> list[dict[str, Any]]:
+        return await self._get_list("/decisions")
+
+    async def get_customer_insights(self) -> list[dict[str, Any]]:
+        return await self._get_list("/context/customer")
+
     async def aclose(self) -> None:
         await self._client.aclose()

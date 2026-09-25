@@ -477,11 +477,12 @@ Tasks marked **⚠ research needed** depend on facts about Anarlog's webhook con
 
 **Deferred, by user decision:** T060 (typed frontend client for `apps/web`) - not on the critical path to the MCP-first MVP; see its own entry above.
 
-### T062 — `search_company_context`, `get_recent_decisions`, `get_customer_insights`
+### T062 — `search_company_context`, `get_recent_decisions`, `get_customer_insights` ✅ COMPLETE
 **Goal:** Core query tools.
 **Start:** T061, T054.
 **Do:** Implement each, calling the corresponding `harness-api` route.
 **Test:** One assertion per tool comparing MCP output to direct REST output.
+**Status:** Done. `search_company_context` → `GET /context`, `get_recent_decisions` → `GET /decisions`, `get_customer_insights` → `GET /context/customer`, each a thin `HarnessAPIClient` method + MCP tool, same shape as T061's `get_evidence`. FastMCP wraps a `list[...]`-returning tool's structured output as `{"result": [...]}` (confirmed by probing it directly - a JSON array isn't a valid top-level structured-content object) - tests unwrap that key before comparing. **Real, first-try test failure, fixed**: comparing MCP tool output to a direct REST call as an ordered list failed because OpenViking's grep-based list endpoints don't guarantee stable ordering across two separate live calls a few milliseconds apart - fixed by sorting both sides by `id` before comparing (same reasoning T053/T054's own tests already used subset/set comparisons for). `apps/mcp-server` full suite: 5 passed.
 
 ### T063 — `get_current_strategy`, `get_product_context`, `get_person_context`, `get_conflicting_information`
 **Goal:** Remaining tools from PRD §14.
