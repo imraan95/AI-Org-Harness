@@ -11,7 +11,14 @@ class KnowledgeRecord(BaseModel):
     """A single unit of organisational knowledge (PRD §7)."""
 
     id: str
-    type: KnowledgeType
+    # T077: loosened from the strict `KnowledgeType` enum to `str`. The
+    # built-in types still live in `KnowledgeType`, but a workspace can now
+    # also define its own custom types (stored in `custom_knowledge_types`,
+    # libs/db) - this model has no way to know about those at construction
+    # time, so validating "is this a real type" moved to the API boundary
+    # (harness-api's /taxonomy/types endpoints and edit_knowledge) instead
+    # of happening here.
+    type: str
     topic: str
     statement: str
     status: KnowledgeStatus

@@ -9,10 +9,17 @@ import type { components } from "@/lib/harness-api/schema";
 import { approveRecord, editRecord, rejectRecord } from "./actions";
 
 type KnowledgeRecord = components["schemas"]["KnowledgeRecord"];
+type TaxonomyType = components["schemas"]["TaxonomyType"];
 
 const REVIEWABLE_STATUSES = new Set(["conflicting", "pending_review"]);
 
-function ConflictCard({ record }: { record: KnowledgeRecord }) {
+function ConflictCard({
+  record,
+  taxonomyTypes,
+}: {
+  record: KnowledgeRecord;
+  taxonomyTypes: TaxonomyType[];
+}) {
   const approve = approveRecord.bind(null, record.id);
   const reject = rejectRecord.bind(null, record.id);
   const edit = editRecord.bind(null, record.id);
@@ -57,6 +64,16 @@ function ConflictCard({ record }: { record: KnowledgeRecord }) {
               defaultValue={record.confidence}
             />
           </label>
+          <label>
+            Type
+            <select name="type" defaultValue={record.type}>
+              {taxonomyTypes.map((t) => (
+                <option key={t.key} value={t.key}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <button type="submit">Save edit</button>
         </form>
       </details>
@@ -66,7 +83,10 @@ function ConflictCard({ record }: { record: KnowledgeRecord }) {
 
 export default async function ConflictsPage() {
   const harnessApi = await getHarnessApiClient();
-  const { data: context } = await harnessApi.GET("/context");
+  const [{ data: context }, { data: taxonomyTypes }] = await Promise.all([
+    harnessApi.GET("/context"),
+    harnessApi.GET("/taxonomy/types"),
+  ]);
 
   const reviewable = (context ?? []).filter((record) => REVIEWABLE_STATUSES.has(record.status));
 
@@ -78,7 +98,7 @@ export default async function ConflictsPage() {
       ) : (
         <ul style={{ listStyle: "none", padding: 0 }}>
           {reviewable.map((record) => (
-            <ConflictCard key={record.id} record={record} />
+            <ConflictCard key={record.id} record={record} taxonomyTypes={taxonomyTypes ?? []} />
           ))}
         </ul>
       )}

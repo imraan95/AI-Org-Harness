@@ -78,6 +78,53 @@ async def test_edit_updates_statement_and_sets_edited_by():
     assert body["status"] == "pending_review"
 
 
+async def test_edit_can_change_type_to_a_valid_custom_type():
+    record = _fixture_record()
+    openviking = RealOpenVikingClient()
+    try:
+        await openviking.write_knowledge(record)
+    finally:
+        await openviking.aclose()
+
+    key = f"t077_{uuid.uuid4().hex[:8]}"
+    client = TestClient(app)
+    created = client.post(
+        "/taxonomy/types",
+        headers=_AUTH_HEADERS,
+        json={"key": key, "label": "Meeting Notes"},
+    )
+    assert created.status_code == 201
+
+    response = client.post(
+        f"/knowledge/{record.id}/edit",
+        headers=_AUTH_HEADERS,
+        json={"edited_by": "alice@rms.test", "type": key},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["type"] == key
+
+    client.delete(f"/taxonomy/types/{key}", headers=_AUTH_HEADERS)
+
+
+async def test_edit_rejects_an_unknown_type():
+    record = _fixture_record()
+    openviking = RealOpenVikingClient()
+    try:
+        await openviking.write_knowledge(record)
+    finally:
+        await openviking.aclose()
+
+    client = TestClient(app)
+    response = client.post(
+        f"/knowledge/{record.id}/edit",
+        headers=_AUTH_HEADERS,
+        json={"edited_by": "alice@rms.test", "type": "not_a_real_type"},
+    )
+
+    assert response.status_code == 400
+
+
 def test_edit_returns_404_for_unknown_id():
     client = TestClient(app)
     response = client.post(

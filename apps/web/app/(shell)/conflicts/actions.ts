@@ -33,6 +33,7 @@ export async function editRecord(knowledgeId: string, formData: FormData): Promi
   const statement = formData.get("statement");
   const topic = formData.get("topic");
   const confidenceRaw = formData.get("confidence");
+  const type = formData.get("type");
 
   const harnessApi = await getHarnessApiClient();
   await harnessApi.POST("/knowledge/{knowledge_id}/edit", {
@@ -47,6 +48,7 @@ export async function editRecord(knowledgeId: string, formData: FormData): Promi
         typeof confidenceRaw === "string" && confidenceRaw.length > 0
           ? Number(confidenceRaw)
           : null,
+      type: typeof type === "string" && type.length > 0 ? type : null,
     },
   });
   revalidatePath("/conflicts");

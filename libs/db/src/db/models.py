@@ -51,6 +51,20 @@ class JobRow(Base):
     )
 
 
+class CustomKnowledgeTypeRow(Base):
+    __tablename__ = "custom_knowledge_types"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    workspace_id: Mapped[str] = mapped_column(Text, default="default")
+    key: Mapped[str] = mapped_column(Text)
+    label: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
 class IngestionEventRow(Base):
     __tablename__ = "ingestion_events"
 

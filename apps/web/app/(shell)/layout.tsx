@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { href: "/conflicts", label: "Conflicts" },
   { href: "/sources", label: "Sources" },
   { href: "/harness", label: "Harness" },
+  { href: "/taxonomy", label: "Taxonomy" },
 ];
 
 export default function ShellLayout({ children }: { children: React.ReactNode }) {
