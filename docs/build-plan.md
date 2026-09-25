@@ -594,6 +594,9 @@ Found and fixed a real layout bug while testing: the logout button was placed wi
 **Start:** T069, T054, T062.
 **Do:** Add a search box calling the same context/search path `search_company_context()` uses.
 **Test:** Manual — type a seeded topic; confirm the results match what T062's MCP tool would return for the same query.
+**Status:** ✅ COMPLETE. `search_company_context()` (T062) itself takes no query - it calls `GET /context` and hands the model everything, letting the model do the "searching" over the full text. So there's no dedicated server-side search endpoint to call; this pane fetches that same `/context` list and filters it client-side (substring match against topic + statement) as a preview of what's in the pool the MCP tool would hand the model for any question. A plain GET `<form>` (`?q=...`) keeps it a server-rendered page with no client JS.
+
+`npx tsc --noEmit`: clean. Verified live: searching "csv" surfaced the real T066 e2e-walkthrough record ("exporting booking data as CSV" / "a way to export their booking data as CSV"); called `search_company_context()` directly afterward and confirmed its full unfiltered output contains that exact same record and statement - same underlying `/context` data, consistent between the pane and the MCP tool.
 
 ### T077 — Editable knowledge taxonomy (custom types)
 **Goal:** Users can extend the harness's knowledge taxonomy with their own custom types, without touching what's already built.
