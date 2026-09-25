@@ -576,6 +576,9 @@ Found and fixed a real layout bug while testing: the logout button was placed wi
 **Start:** T069, T055, T056, T057.
 **Do:** List pending conflicts/proposed records; wire Approve/Edit/Reject buttons to the corresponding `harness-api` routes.
 **Test:** Manual — click Approve on a seeded pending record; confirm its status changes (verify via API or Supabase directly).
+**Status:** ✅ COMPLETE. `harness-api`'s own `/conflicts` endpoint only covers `status=conflicting` (T053's comment on that route) - there's no dedicated "pending" endpoint, so this pane fetches `/context` (everything) and filters client-side for both `conflicting` and `pending_review`, matching T070's precedent. Built `app/(shell)/conflicts/actions.ts` (`approveRecord`/`rejectRecord`/`editRecord` Server Actions wired to T055/T056/T057's routes, each `revalidatePath`-ing the pane) and `page.tsx` (a card per reviewable record, with Approve/Reject as one-click forms and an expandable inline edit form for statement/topic/confidence). `edited_by` is supplied server-side from the logged-in user's Supabase session, not a client-editable field.
+
+`npx tsc --noEmit`: clean. Verified live in the browser against real data (the T066 e2e walkthrough's fixtures plus accumulated test records - same noise caveat as T070): approved the real `PENDING_REVIEW` record "exporting booking data as CSV" and confirmed it dropped out of the reviewable list after the POST (its status moved to `ACTIVE`, so it no longer matches the pane's filter); edited another real record's topic ("opening bookings in Excel" → with an appended marker) and confirmed the new value round-tripped through harness-api and reappeared as the field's value after `revalidatePath` re-rendered the pane. Both actions round-tripped through the real running `harness-api`, not a mock.
 
 ### T072 — Sources pane
 **Goal:** Show supporting meetings for a selected knowledge item.
