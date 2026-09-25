@@ -3,6 +3,7 @@ T051: protected by a logged-in user's Supabase Auth token.
 T052: also accepts a static service key, for non-user callers.
 T053: GET /decisions, /people, /conflicts - filtered list views.
 T054: GET /context, /context/product, /context/customer, /context/strategy.
+T055: POST /knowledge/{id}/approve.
 """
 
 from __future__ import annotations
@@ -10,7 +11,7 @@ from __future__ import annotations
 from typing import AsyncIterator
 
 from fastapi import Depends, FastAPI, HTTPException
-from knowledge_model import KnowledgeRecord, KnowledgeType
+from knowledge_model import KnowledgeRecord, KnowledgeStatus, KnowledgeType
 from openviking_client import OpenVikingClient, RealOpenVikingClient
 
 from .auth import get_current_user_or_service
@@ -101,3 +102,16 @@ async def get_context_strategy(
     openviking: OpenVikingClient = Depends(get_openviking_client),
 ) -> list[KnowledgeRecord]:
     return await openviking.list_by_type(KnowledgeType.STRATEGY)
+
+
+@app.post("/knowledge/{knowledge_id}/approve", response_model=KnowledgeRecord)
+async def approve_knowledge(
+    knowledge_id: str,
+    _user: dict = Depends(get_current_user_or_service),
+    openviking: OpenVikingClient = Depends(get_openviking_client),
+) -> KnowledgeRecord:
+    record = await openviking.get_knowledge_by_id(knowledge_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="knowledge record not found")
+    await openviking.update_knowledge_status(knowledge_id, KnowledgeStatus.ACTIVE)
+    return await openviking.get_knowledge_by_id(knowledge_id)

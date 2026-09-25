@@ -419,11 +419,12 @@ Tasks marked **⚠ research needed** depend on facts about Anarlog's webhook con
 **Test:** Integration test seeds mixed-topic fixtures; each scoped endpoint returns only its topic's records.
 **Status:** Done. Added `list_all()` to `OpenVikingClient` (+ fake + real, real via a recursive `**/*.json` glob under the knowledge root - same pattern as `_find_uri_by_id`) since `GET /context` needed an unfiltered view and no such method existed. `/context/product`, `/context/customer`, `/context/strategy` reuse T053's `list_by_type()` against `PRODUCT_REQUIREMENT`/`CUSTOMER_INSIGHT`/`STRATEGY` - these map 1:1 to `KnowledgeType` values despite the build-plan calling them "topic-filtered" (PRD's loose usage of "topic," not the record's own `topic` string field). Full suite: 95 passed, 4 failed - the 4 are the pre-existing, already-documented Ollama/OpenViking contention issue (`infra/README.md`), not a T054 regression; the scoped run (`libs/openviking_client apps/harness-api`) was 28/28 green.
 
-### T055 — `POST /knowledge/{id}/approve`
+### T055 — `POST /knowledge/{id}/approve` ✅ COMPLETE
 **Goal:** Human approval flips a pending record to active.
 **Start:** T052.
 **Do:** Implement the route calling `update_knowledge_status(id, "active")`.
 **Test:** Integration test approves a `pending_review` fixture and asserts its status becomes `active`.
+**Status:** Done. 404s for an unknown id (checked via `get_knowledge_by_id` first, matching `GET /knowledge/{id}`'s own pattern), otherwise calls `update_knowledge_status()` and re-fetches to return the updated record. Behind the same `get_current_user_or_service` dependency as every other route. Full suite in `apps/harness-api`: 18 passed.
 
 ### T056 — `POST /knowledge/{id}/reject`
 **Goal:** Human rejection marks a record rejected (status flag, not deletion, per PRD §20).
