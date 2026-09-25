@@ -584,6 +584,13 @@ Verified live in the browser pane: visiting `/` while logged out redirected to `
 **Do:** By user decision - the 8 built-in `KnowledgeType` values (decision, fact, customer_insight, strategy, product_requirement, process, policy, person, ownership, action, hypothesis, conflict) stay fixed, since every MCP tool (`get_recent_decisions`, `get_customer_insights`, etc.) and the pipeline's classifier depend on their exact values. Users can additionally define their own custom types on top of that fixed set. Concretely: a new `custom_knowledge_types` table (Supabase migration, `libs/db`); new `harness-api` endpoints (`GET /taxonomy/types` - built-ins plus an org's custom ones; `POST /taxonomy/types` to add one; `DELETE /taxonomy/types/{id}` - built-ins can't be deleted); loosen `KnowledgeRecord.type` from the strict `KnowledgeType` enum to `str` (validated against built-in ∪ custom at the API boundary, since custom types are dynamic/DB-backed and the model itself has no way to know about them); a small taxonomy-management section in `apps/web` (list/add/delete custom types); the Conflicts pane's edit flow (T071) offers both built-in and custom types when assigning a record's type.
 **Test:** Adding a custom type via the web UI, then assigning it to a record through the edit flow, round-trips - the type persists and appears correctly on a later fetch. The 8 built-in types and every existing MCP tool continue to work unchanged.
 
+### T078 — Real fix for Ollama contention (separate Ollama instance)
+**Goal:** Stop OpenViking's own background model-warming from starving `llm_router`'s real calls, instead of just tolerating it with a longer timeout.
+**Start:** infra/README.md's contention note.
+**Do:** Run a second Ollama daemon on its own port, dedicated to `context_agent`/`llm_router`'s own calls (`llama3.2`), separate from the shared daemon OpenViking's container keeps warm with its own models. Point `OLLAMA_BASE_URL` at that second instance for our own calls. Design already discussed (onboarding/key implications) earlier in this project - not yet built.
+**Test:** With OpenViking's container running (and busy with its own background jobs), a real `OllamaLLM.extract()` call completes in roughly the same time as it does with OpenViking stopped - i.e. contention is actually eliminated, not just tolerated by a longer timeout.
+**Status:** Not started. Logged after hitting the contention live during a manual end-to-end walkthrough (`scripts/e2e_manual_walkthrough.py`) - two consecutive real extraction calls timed out at 120s with OpenViking's container running. As an immediate stopgap (not a fix), `OllamaLLM`'s httpx timeout was bumped 120s → 300s in `libs/llm_router/src/llm_router/ollama.py`, matching `infra/README.md`'s own observed worst case (240s+). This task is the actual fix.
+
 ---
 
 ## Phase 14 — End-to-end verification (wrap-up)
@@ -605,6 +612,21 @@ Verified live in the browser pane: visiting `/` while logged out redirected to `
 **Start:** T075.
 **Do:** Feed the two PRD §9 meetings ("SSO not planned for Q4" then "shipping in November").
 **Test:** Manual — a conflict record appears with `status: pending`, matching PRD §9, and no automatic resolution occurs.
+
+---
+
+## Open design questions (not yet scheduled)
+
+### Tool-routing at scale: Roy vs. other internal tools/MCP servers
+Discovered live during a manual end-to-end walkthrough: with `ask-rms` (a broad "any internal RMS question" skill) also available, Claude Desktop chose `ask-rms` over the harness's own MCP tools for an ambiguous internal question, even after T065's tool-description sharpening. Explicitly naming the harness ("using the harness MCP tools...") reliably won instead.
+
+This is expected to get harder, not easier, once this goes out to wider access (per the earlier decision to go cloud-hosted, per-employee, with Granola/Gmail/Notion/Slack integrations post-beta) - Roy will then sit alongside other orgs' own Confluence/Jira/Granola MCP servers and internal knowledge bases, none of which we control or can out-describe with certainty. Sharpening tool descriptions further, and MCP tool `annotations` (e.g. `readOnlyHint`), are real but limited levers - fundamentally an arms race against unknown future competitors, not a guaranteed fix. MCP as a protocol has no native priority/trust mechanism between competing servers today.
+
+Two more durable directions worth deciding on before wider rollout, neither yet designed or built:
+1. **Integrate as a source, not a competing sibling** - get the harness's data consulted *by* an org's existing "ask anything internal" orchestrator (e.g. `ask-rms` itself, or its equivalent at another org) rather than competing against it for the top-level routing decision.
+2. **Deliberate invocation over automatic routing** - a named entry point (a slash command, "ask Roy", its own connector card) that a user reaches for on purpose, the way Jira/Confluence aren't expected to auto-win against each other without being named.
+
+No action needed yet - flagged here so it isn't lost before the wider-rollout phase.
 
 ---
 

@@ -38,8 +38,15 @@ class OllamaLLM(LLM):
         )
         # Local model calls (especially a cold start, while Ollama loads the
         # model into memory) can take a lot longer than httpx's 5s default.
+        # 300s, not 120s (see infra/README.md's Ollama contention note) -
+        # OpenViking's container keeps its own models warm on the same
+        # shared daemon, and confirmed real-world contention has pushed a
+        # single call past 120s twice in a row (T078 manual walkthrough).
+        # This is a stopgap for that contention, not a fix for it - see
+        # docs/build-plan.md T078 for the real fix (a separate Ollama
+        # instance dedicated to context-agent's own calls).
         self._client = client or httpx.AsyncClient(
-            base_url=self._base_url, timeout=120.0
+            base_url=self._base_url, timeout=300.0
         )
 
     async def _call(self, prompt: str, *, json_mode: bool = False) -> str:

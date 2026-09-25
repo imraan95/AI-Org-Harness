@@ -19,12 +19,21 @@ def _evidence_line(record: dict[str, Any]) -> str:
     # single-record path (get_evidence). Every other tool's records come
     # from a list endpoint that doesn't join sources, so those fall back
     # to a source count instead of a fabricated meeting name.
+    #
+    # Every line ends with "(id: ...)" - without this, nothing this
+    # function returns lets an agent follow up on a specific fact via
+    # get_evidence/get_knowledge_history, since format_answer() is the
+    # only output most tools ever produce. Discovered live: a real
+    # Claude Desktop chat tried to drill into a summary answer and
+    # guessed at ids (guaranteed 404s) because none were ever surfaced.
+    record_id = record.get("id", "unknown id")
     sources = record.get("sources")
     if sources:
-        return "\n".join(f"- {s['meeting_title']}" for s in sources)
+        lines = "\n".join(f"- {s['meeting_title']}" for s in sources)
+        return f"{lines} (id: {record_id})"
     count = len(record.get("source_ids") or [])
     noun = "source" if count == 1 else "sources"
-    return f"- {record.get('topic', 'unknown topic')}: {count} {noun}"
+    return f"- {record.get('topic', 'unknown topic')}: {count} {noun} (id: {record_id})"
 
 
 def format_answer(records: list[dict[str, Any]]) -> str:

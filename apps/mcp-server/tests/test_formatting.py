@@ -71,6 +71,44 @@ def test_format_answer_uses_real_sources_when_present():
     assert "- Customer call with Acme" in answer
 
 
+def test_format_answer_includes_each_records_id_so_it_can_be_looked_up_later():
+    """A summary answer with no id in it is a dead end for an agent - it
+    can't follow up with get_evidence/get_knowledge_history on anything it
+    just surfaced. Confirmed missing live (a Claude Desktop chat guessed
+    at ids and got guaranteed 404s) before this test/fix existed."""
+    records = [
+        {
+            "id": "K-abc123",
+            "topic": "enterprise_sso",
+            "statement": "SSO has been identified as a recurring enterprise customer requirement.",
+            "status": "active",
+            "source_ids": ["m1", "m2", "m3"],
+        }
+    ]
+
+    answer = format_answer(records)
+
+    assert "K-abc123" in answer
+
+
+def test_format_answer_includes_the_id_alongside_real_sources_too():
+    records = [
+        {
+            "id": "K-abc123",
+            "topic": "enterprise_sso",
+            "statement": "Three enterprise customers have asked for SSO.",
+            "status": "active",
+            "source_ids": ["m1"],
+            "sources": [{"meeting_title": "Customer call with Acme", "meeting_date": "2026-01-01"}],
+        }
+    ]
+
+    answer = format_answer(records)
+
+    assert "- Customer call with Acme" in answer
+    assert "K-abc123" in answer
+
+
 def test_format_answer_handles_no_records():
     answer = format_answer([])
 
