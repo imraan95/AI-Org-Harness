@@ -29,3 +29,6 @@ infra/openviking-config/data/
 # Editors
 .vscode/
 .idea/
+
+# GTM planning docs - not code, shouldn't live in this repo's history
+/ROY GTM/
