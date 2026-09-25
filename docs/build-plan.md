@@ -454,13 +454,16 @@ Tasks marked **⚠ research needed** depend on facts about Anarlog's webhook con
 **Test:** Integration test seeds a 3-link chain, calls the endpoint on the newest id, asserts all 3 come back in order.
 **Status:** Done. Returns newest-to-oldest (the order implied by "calls the endpoint on the newest id... asserts all 3 come back in order" - starts at the given record, follows `supersedes` backward). A `visited` id set guards against an invalid cycle in the data turning this into an infinite loop - shouldn't happen given how `supersedes` is written elsewhere, but cheap to guard against. Full suite in `apps/harness-api`: 30 passed.
 
-### T060 — Generate a typed frontend client from the OpenAPI schema ⏸️ DEFERRED
-**Deferred by explicit user decision (2026-09-25):** not on the critical path to the MCP-first MVP - `apps/web` is still the bare Next.js scaffold from T005, no real UI work has started on it. Picking up Phase 11 (`apps/mcp-server`) first instead, since that's the piece that actually lets Claude query the harness end to end. Revisit T060 whenever `apps/web` gets real UI work.
+### T060 — Generate a typed frontend client from the OpenAPI schema ✅ COMPLETE
+**Originally deferred (2026-09-25):** not on the critical path to the MCP-first MVP - `apps/web` was still the bare Next.js scaffold. Revisited once T069 built real UI work in `apps/web`.
 
 **Goal:** Give `apps/web` typed access to `harness-api` without hand-written types.
 **Start:** T059, T005.
 **Do:** Write `scripts/generate-frontend-types.sh` running `openapi-typescript` (or `orval`) against `harness-api`'s `/openapi.json`, writing output into `apps/web`.
 **Test:** Run the script against the running `harness-api`; confirm a generated `.ts` file appears with types matching the routes above.
+**Status:** Added `scripts/generate-frontend-types.sh` (`openapi-typescript` against a live `harness-api`'s `/openapi.json`, writing `apps/web/lib/harness-api/schema.d.ts` - regenerate any time `harness-api`'s routes change). Ran it live: generated types for all 10 routes correctly, including `KnowledgeRecord`/`KnowledgeRecordWithSources`/`KnowledgeEditRequest` schemas and the `KnowledgeType`/`KnowledgeStatus` enums.
+
+By user decision, paired the generated types with `openapi-fetch` (same toolchain author as `openapi-typescript`) rather than a hand-written fetch wrapper - eliminates a whole category of code (`apps/web/lib/harness-api/client.ts`'s `createHarnessApiClient(accessToken)` is ~10 lines) and keeps every call typed against the schema automatically as it's regenerated. Attaches the logged-in user's own Supabase session token as a Bearer header, verified by `harness_api.auth.get_current_user_or_service`'s existing JWKS check (T051) - no new backend auth path needed. `npx tsc --noEmit` confirmed a clean typecheck against the new client + generated schema.
 
 ---
 
