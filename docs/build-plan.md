@@ -484,11 +484,12 @@ Tasks marked **⚠ research needed** depend on facts about Anarlog's webhook con
 **Test:** One assertion per tool comparing MCP output to direct REST output.
 **Status:** Done. `search_company_context` → `GET /context`, `get_recent_decisions` → `GET /decisions`, `get_customer_insights` → `GET /context/customer`, each a thin `HarnessAPIClient` method + MCP tool, same shape as T061's `get_evidence`. FastMCP wraps a `list[...]`-returning tool's structured output as `{"result": [...]}` (confirmed by probing it directly - a JSON array isn't a valid top-level structured-content object) - tests unwrap that key before comparing. **Real, first-try test failure, fixed**: comparing MCP tool output to a direct REST call as an ordered list failed because OpenViking's grep-based list endpoints don't guarantee stable ordering across two separate live calls a few milliseconds apart - fixed by sorting both sides by `id` before comparing (same reasoning T053/T054's own tests already used subset/set comparisons for). `apps/mcp-server` full suite: 5 passed.
 
-### T063 — `get_current_strategy`, `get_product_context`, `get_person_context`, `get_conflicting_information`
+### T063 — `get_current_strategy`, `get_product_context`, `get_person_context`, `get_conflicting_information` ✅ COMPLETE
 **Goal:** Remaining tools from PRD §14.
 **Start:** T062.
 **Do:** Implement each.
 **Test:** Same pattern as T062, one per tool.
+**Status:** Done. `get_current_strategy` → `GET /context/strategy`, `get_product_context` → `GET /context/product`, `get_conflicting_information` → `GET /conflicts`. `get_person_context` → `GET /people` - **judgment call**: there's no `/context/person` route (architecture.md's REST list only has `/context/product`, `/context/customer`, `/context/strategy`), so this maps to the standalone `/people` route instead, the closest existing match. All 8 PRD §14 MCP tools now exist. `apps/mcp-server` full suite: 9 passed.
 
 ### T064 — Provenance-formatted answers
 **Goal:** Tool output reads like the PRD §15 example, not raw JSON.

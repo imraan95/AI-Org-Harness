@@ -1,5 +1,7 @@
 """T061: MCP scaffold + `get_evidence` (PRD §14).
 T062: `search_company_context`, `get_recent_decisions`, `get_customer_insights`.
+T063: `get_current_strategy`, `get_product_context`, `get_person_context`,
+`get_conflicting_information`.
 
 Wraps harness-api as an MCP tool, per docs/architecture.md's
 apps/mcp-server design: each tool calls harness-api using the static
@@ -59,6 +61,46 @@ async def get_customer_insights() -> list[dict[str, Any]]:
     client = _client_factory()
     try:
         return await client.get_customer_insights()
+    finally:
+        await client.aclose()
+
+
+@mcp.tool()
+async def get_current_strategy() -> list[dict[str, Any]]:
+    """Every recorded strategy record."""
+    client = _client_factory()
+    try:
+        return await client.get_current_strategy()
+    finally:
+        await client.aclose()
+
+
+@mcp.tool()
+async def get_product_context() -> list[dict[str, Any]]:
+    """Every recorded product requirement."""
+    client = _client_factory()
+    try:
+        return await client.get_product_context()
+    finally:
+        await client.aclose()
+
+
+@mcp.tool()
+async def get_person_context() -> list[dict[str, Any]]:
+    """Every recorded person record."""
+    client = _client_factory()
+    try:
+        return await client.get_people()
+    finally:
+        await client.aclose()
+
+
+@mcp.tool()
+async def get_conflicting_information() -> list[dict[str, Any]]:
+    """Potential contradictions / pending confirmation (PRD §16.B)."""
+    client = _client_factory()
+    try:
+        return await client.get_conflicts()
     finally:
         await client.aclose()
 
