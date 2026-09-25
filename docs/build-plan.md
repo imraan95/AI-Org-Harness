@@ -454,7 +454,9 @@ Tasks marked **⚠ research needed** depend on facts about Anarlog's webhook con
 **Test:** Integration test seeds a 3-link chain, calls the endpoint on the newest id, asserts all 3 come back in order.
 **Status:** Done. Returns newest-to-oldest (the order implied by "calls the endpoint on the newest id... asserts all 3 come back in order" - starts at the given record, follows `supersedes` backward). A `visited` id set guards against an invalid cycle in the data turning this into an infinite loop - shouldn't happen given how `supersedes` is written elsewhere, but cheap to guard against. Full suite in `apps/harness-api`: 30 passed.
 
-### T060 — Generate a typed frontend client from the OpenAPI schema
+### T060 — Generate a typed frontend client from the OpenAPI schema ⏸️ DEFERRED
+**Deferred by explicit user decision (2026-09-25):** not on the critical path to the MCP-first MVP - `apps/web` is still the bare Next.js scaffold from T005, no real UI work has started on it. Picking up Phase 11 (`apps/mcp-server`) first instead, since that's the piece that actually lets Claude query the harness end to end. Revisit T060 whenever `apps/web` gets real UI work.
+
 **Goal:** Give `apps/web` typed access to `harness-api` without hand-written types.
 **Start:** T059, T005.
 **Do:** Write `scripts/generate-frontend-types.sh` running `openapi-typescript` (or `orval`) against `harness-api`'s `/openapi.json`, writing output into `apps/web`.
@@ -464,11 +466,16 @@ Tasks marked **⚠ research needed** depend on facts about Anarlog's webhook con
 
 ## Phase 11 — MCP server
 
-### T061 — MCP scaffold + `get_evidence`
+### T061 — MCP scaffold + `get_evidence` ✅ COMPLETE
 **Goal:** First working MCP tool.
 **Start:** T058, T052.
 **Do:** Scaffold `apps/mcp-server` using the official Python `mcp` SDK, with one tool, `get_evidence(knowledge_id)`, calling `harness-api` with the static service key.
 **Test:** Call the tool via an MCP test client; assert the result matches a direct REST call to `/knowledge/{id}` (with the service key).
+**Status:** Done. **Real finding, confirmed via install**: bare `pip install mcp` resolves to v2, which renamed `FastMCP` to `MCPServer` with a different API - pinned `mcp<2` (matching `vendor/openviking`'s own existing pin) to keep the `FastMCP` interface `docs/architecture.md` assumed. `mcp_server.server.get_evidence(knowledge_id)` calls a small `HarnessAPIClient` (mirrors `RealOpenVikingClient`'s shape) against `harness-api` with the `x-service-key` header from T052. Tested via `mcp.shared.memory.create_connected_server_and_client_session` - the real MCP protocol dispatch path, not just calling the underlying Python function directly - against an in-process `harness-api` over `httpx.ASGITransport` (same in-process-HTTP approach `harness-api`'s own tests already use via `TestClient`, avoiding a second real uvicorn process). Added a minimal unauthenticated `GET /health` to `harness-api` for this and future liveness checks. `HARNESS_API_BASE_URL` defaults to `http://127.0.0.1:8001` - no prior convention existed for harness-api's port.
+
+**Real bug found during this task, unrelated to MCP itself**: OpenViking's `search/glob` silently caps at 256 matches with no pagination/truncation signal - confirmed live once local test data exceeded that count, breaking T054's `/context` test. Every glob/grep-based `RealOpenVikingClient` method is affected past 256 total records. Fixed locally by clearing accumulated test fixtures (`infra/openviking-config/data/viking/*/resources/knowledge/`, account/key data untouched); logged as a real, unresolved architectural gap in `docs/research/openviking.md` §8 - must be addressed before any production or multi-employee rollout. Full suite (`apps/harness-api apps/mcp-server`): 33 passed.
+
+**Deferred, by user decision:** T060 (typed frontend client for `apps/web`) - not on the critical path to the MCP-first MVP; see its own entry above.
 
 ### T062 — `search_company_context`, `get_recent_decisions`, `get_customer_insights`
 **Goal:** Core query tools.

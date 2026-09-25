@@ -8,6 +8,8 @@ T056: POST /knowledge/{id}/reject.
 T057: POST /knowledge/{id}/edit.
 T058: GET /knowledge/{id} includes a `sources` array (meeting title/date).
 T059: GET /knowledge/{id}/history - walk the supersedes chain.
+T061: GET /health - unauthenticated liveness check, so other services
+(apps/mcp-server's tests) can detect a real running instance.
 """
 
 from __future__ import annotations
@@ -25,6 +27,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .auth import get_current_user_or_service
 
 app = FastAPI(title="harness-api")
+
+
+@app.get("/health")
+async def health() -> dict[str, str]:
+    return {"status": "ok"}
 
 
 class Source(BaseModel):
