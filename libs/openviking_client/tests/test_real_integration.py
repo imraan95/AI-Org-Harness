@@ -158,6 +158,23 @@ async def test_list_by_type_includes_only_matching_type_records():
     await client.aclose()
 
 
+async def test_list_all_includes_records_across_different_topics():
+    run_id = uuid.uuid4().hex[:8]
+    client = RealOpenVikingClient()
+    record_a = _knowledge_record(topic=f"listall_a_{run_id}", statement="A.")
+    record_b = _knowledge_record(topic=f"listall_b_{run_id}", statement="B.")
+
+    await client.write_knowledge(record_a)
+    await client.write_knowledge(record_b)
+
+    results = await client.list_all()
+    result_ids = {r.id for r in results}
+
+    assert {record_a.id, record_b.id}.issubset(result_ids)
+
+    await client.aclose()
+
+
 async def test_permissions_scaffold_fields_round_trip():
     """T039: workspace_id/etc. are just ordinary KnowledgeRecord fields now
     (ADR 0003) - confirm they survive a real write/read cycle like any

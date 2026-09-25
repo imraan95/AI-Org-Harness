@@ -190,6 +190,20 @@ class RealOpenVikingClient(OpenVikingClient):
             seen.setdefault(match["uri"], None)
         return [await self._read_record(uri) for uri in seen]
 
+    async def list_all(self) -> list[KnowledgeRecord]:
+        # Same glob-then-read approach as get_relevant_knowledge, but
+        # across every topic directory under the knowledge root rather
+        # than one - "**/*.json" recurses.
+        glob_response = await self._client.post(
+            "/api/v1/search/glob",
+            json={"pattern": "**/*.json", "uri": KNOWLEDGE_ROOT},
+        )
+        if glob_response.status_code == 404:
+            return []
+        result = self._unwrap(glob_response)
+        matches = result.get("matches", [])
+        return [await self._read_record(uri) for uri in matches]
+
     async def update_knowledge_status(
         self, knowledge_id: str, status: KnowledgeStatus
     ) -> None:

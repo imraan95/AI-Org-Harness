@@ -55,3 +55,15 @@ async def test_list_by_type_matches_only_that_type():
     results = await client.list_by_type(KnowledgeType.DECISION)
 
     assert [r.id for r in results] == [decision.id]
+
+
+async def test_list_all_returns_every_written_record():
+    client = FakeOpenVikingClient()
+    decision = _record(id="K-decision", type="decision")
+    person = _record(id="K-person", type="person")
+    await client.write_knowledge(decision)
+    await client.write_knowledge(person)
+
+    results = await client.list_all()
+
+    assert {r.id for r in results} == {decision.id, person.id}

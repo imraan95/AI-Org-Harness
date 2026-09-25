@@ -2,6 +2,7 @@
 T051: protected by a logged-in user's Supabase Auth token.
 T052: also accepts a static service key, for non-user callers.
 T053: GET /decisions, /people, /conflicts - filtered list views.
+T054: GET /context, /context/product, /context/customer, /context/strategy.
 """
 
 from __future__ import annotations
@@ -68,3 +69,35 @@ async def get_conflicts(
     # in T037 for exactly this notion of "conflict", rather than a new
     # type-filtered list.
     return await openviking.list_conflicts()
+
+
+@app.get("/context", response_model=list[KnowledgeRecord])
+async def get_context(
+    _user: dict = Depends(get_current_user_or_service),
+    openviking: OpenVikingClient = Depends(get_openviking_client),
+) -> list[KnowledgeRecord]:
+    return await openviking.list_all()
+
+
+@app.get("/context/product", response_model=list[KnowledgeRecord])
+async def get_context_product(
+    _user: dict = Depends(get_current_user_or_service),
+    openviking: OpenVikingClient = Depends(get_openviking_client),
+) -> list[KnowledgeRecord]:
+    return await openviking.list_by_type(KnowledgeType.PRODUCT_REQUIREMENT)
+
+
+@app.get("/context/customer", response_model=list[KnowledgeRecord])
+async def get_context_customer(
+    _user: dict = Depends(get_current_user_or_service),
+    openviking: OpenVikingClient = Depends(get_openviking_client),
+) -> list[KnowledgeRecord]:
+    return await openviking.list_by_type(KnowledgeType.CUSTOMER_INSIGHT)
+
+
+@app.get("/context/strategy", response_model=list[KnowledgeRecord])
+async def get_context_strategy(
+    _user: dict = Depends(get_current_user_or_service),
+    openviking: OpenVikingClient = Depends(get_openviking_client),
+) -> list[KnowledgeRecord]:
+    return await openviking.list_by_type(KnowledgeType.STRATEGY)

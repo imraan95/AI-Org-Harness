@@ -412,11 +412,12 @@ Tasks marked **⚠ research needed** depend on facts about Anarlog's webhook con
 **Test:** Integration test seeds fixtures of each type; each endpoint returns only its matching records.
 **Status:** Done. Added `list_by_type(KnowledgeType)` to the `OpenVikingClient` interface (+ fake + real, real via the same content-grep approach as `list_conflicts`) since no such method existed yet. `GET /decisions` and `GET /people` use it directly. `GET /conflicts` deliberately reuses the existing T037 `list_conflicts()` instead - PRD §16's "Conflicts" pane means "potential contradictions / pending confirmation" (`KnowledgeStatus.CONFLICTING`), a status, not the separate `KnowledgeType.CONFLICT` enum value; using `list_by_type(CONFLICT)` here would have been the wrong filter despite the tempting name match, flagged here so it isn't "fixed" incorrectly later. Full suite green.
 
-### T054 — `GET /context`, `/context/product`, `/context/customer`, `/context/strategy`
+### T054 — `GET /context`, `/context/product`, `/context/customer`, `/context/strategy` ✅ COMPLETE
 **Goal:** Topic-scoped aggregate views.
 **Start:** T053.
 **Do:** Implement each as a topic-filtered view.
 **Test:** Integration test seeds mixed-topic fixtures; each scoped endpoint returns only its topic's records.
+**Status:** Done. Added `list_all()` to `OpenVikingClient` (+ fake + real, real via a recursive `**/*.json` glob under the knowledge root - same pattern as `_find_uri_by_id`) since `GET /context` needed an unfiltered view and no such method existed. `/context/product`, `/context/customer`, `/context/strategy` reuse T053's `list_by_type()` against `PRODUCT_REQUIREMENT`/`CUSTOMER_INSIGHT`/`STRATEGY` - these map 1:1 to `KnowledgeType` values despite the build-plan calling them "topic-filtered" (PRD's loose usage of "topic," not the record's own `topic` string field). Full suite: 95 passed, 4 failed - the 4 are the pre-existing, already-documented Ollama/OpenViking contention issue (`infra/README.md`), not a T054 regression; the scoped run (`libs/openviking_client apps/harness-api`) was 28/28 green.
 
 ### T055 — `POST /knowledge/{id}/approve`
 **Goal:** Human approval flips a pending record to active.

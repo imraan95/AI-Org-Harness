@@ -31,6 +31,9 @@ class OpenVikingClient(ABC):
     async def list_by_type(self, knowledge_type: KnowledgeType) -> list[KnowledgeRecord]: ...
 
     @abstractmethod
+    async def list_all(self) -> list[KnowledgeRecord]: ...
+
+    @abstractmethod
     async def update_knowledge_status(
         self, knowledge_id: str, status: KnowledgeStatus
     ) -> None: ...
