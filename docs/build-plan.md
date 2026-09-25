@@ -553,6 +553,11 @@ Verified live in the browser pane: visiting `/` while logged out redirected to `
 **Start:** T068.
 **Do:** Add 4 nav items: Memory, Conflicts, Sources, Harness — each an empty page, only reachable when logged in.
 **Test:** Manual — after logging in, all 4 links render and navigate.
+**Status:** ✅ COMPLETE. Added a `(shell)` route group (`layout.tsx` with the nav + a `logout` Server Action, deferred from T068 since nothing needed it yet) wrapping 4 new pages: `/memory`, `/conflicts`, `/sources`, `/harness`, each an empty placeholder heading for now. `/` now redirects to `/memory` instead of showing the leftover `create-next-app` placeholder. Middleware from T068 already gates every route except `/login`, so the 4 new panes needed no extra protection.
+
+Verified live in the browser: all 4 panes render and navigate correctly; logging out redirects to `/login`; navigating directly to `/conflicts` while logged out redirects back to `/login`, confirming the new panes are actually gated, not just visually present.
+
+Found and fixed a real layout bug while testing: the logout button was placed with `marginTop: "auto"` at the bottom of the nav, which in local dev sits exactly under Next.js's dev-mode indicator badge (bottom-left corner) - clicks landed on the indicator instead of the button. Fixed by moving logout to the top of the nav instead of pinning it to the bottom.
 
 ### T070 — Company Memory pane
 **Goal:** Show what we know/decided/changed/customers are saying.
