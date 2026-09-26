@@ -1,7 +1,8 @@
 """One-off manual end-to-end test: a real sample meeting transcript, run
 through the REAL pipeline - real Ollama extraction/classification (not
-FakeLLM), real OpenViking write - so the result can then be queried live
-through the connected `harness` MCP server.
+FakeLLM), a real knowledge-store write (get_knowledge_store() - Postgres
+by default, per docs/decisions/0011) - so the result can then be queried
+live through the connected `harness` MCP server.
 
 Not part of the automated test suite (that's what T074 will be, using
 FakeLLM for determinism - see docs/build-plan.md Phase 14). This script
@@ -19,8 +20,8 @@ calling the LLM - `OllamaLLM.compare()` isn't implemented yet (see
 llm_router/ollama.py), so an existing-knowledge collision here would
 raise NotImplementedError.
 
-Requires: a running OpenViking (OPENVIKING_API_KEY set), a running
-Supabase (`supabase start`), and a running Ollama with `llama3.2` pulled.
+Requires: a running Supabase (`supabase start`), and a running Ollama
+with `llama3.2` pulled.
 
 Run with:
     uv run python scripts/e2e_manual_walkthrough.py
@@ -35,7 +36,7 @@ from datetime import datetime, timezone
 from context_agent import process_transcript
 from db import get_session_factory, insert_transcript
 from llm_router import OllamaLLM
-from openviking_client import RealOpenVikingClient
+from openviking_client import get_knowledge_store
 from shared_schemas import Transcript
 
 _SAMPLE_TRANSCRIPT = """\
@@ -68,7 +69,7 @@ async def main() -> None:
         await insert_transcript(session, transcript)
 
     llm = OllamaLLM()
-    openviking = RealOpenVikingClient()
+    openviking = get_knowledge_store()
     try:
         written = await process_transcript(transcript, llm, openviking)
     finally:

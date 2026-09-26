@@ -16,8 +16,9 @@ only show up as real meeting titles via `get_evidence(insight_id)`
 (T058's per-record provenance join), not via the broader tools, which
 show a source count instead (see docs/build-plan.md T064's status note).
 
-Requires a running OpenViking (OPENVIKING_API_KEY set) and a running
-Supabase (`supabase start`). Run with:
+Requires a running Supabase (`supabase start`). Writes through
+get_knowledge_store() (Postgres by default, per docs/decisions/0011).
+Run with:
     uv run python scripts/seed_prd15_walkthrough.py
 """
 
@@ -29,7 +30,7 @@ from datetime import datetime, timezone
 
 from db import get_session_factory, insert_transcript
 from knowledge_model import KnowledgeRecord
-from openviking_client import RealOpenVikingClient
+from openviking_client import get_knowledge_store
 from shared_schemas import Transcript
 
 _EVIDENCE_MEETING_TITLES = [
@@ -64,7 +65,7 @@ async def main() -> None:
             )
             transcript_ids.append(transcript_id)
 
-    openviking = RealOpenVikingClient()
+    openviking = get_knowledge_store()
     try:
         insight = KnowledgeRecord(
             id=f"K-t065-insight-{uuid.uuid4()}",

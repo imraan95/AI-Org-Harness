@@ -156,17 +156,19 @@ Tasks marked **⚠ research needed** depend on facts about Anarlog's webhook con
 **Do:** Implement `OllamaLLM(LLM)` (or equivalent hosted small-model API) wired up for `extract()` and `classify()`, called via `httpx`.
 **Test:** Integration test (skippable if no model available locally) sends a fixed short transcript snippet and asserts the response has the expected *fields* (not exact wording).
 
-### T021 — Model router logic
+### T021 — Model router logic ⏸ SUPERSEDED, see T082 / ADR 0010
 **Goal:** Route each task to the configured cheapest-capable backend.
 **Start:** T020.
 **Do:** Add config (via `pydantic-settings`, reading env vars) mapping tasks to model tiers (e.g. `extract=small, classify=small, compare=large, summarise=small`) and a `get_model_for(task)` function.
 **Test:** Unit test asserts `get_model_for("compare")` returns the configured "large" model id and is overridable via env var.
+**Update (2026-09-26):** built as described, but never actually wired into `OllamaLLM` (which always used one `self._model` for every task regardless) - an orphaned config layer. Deleted in T082 per `docs/decisions/0010-single-llm-backend-ollama-only.md`.
 
-### T022 — Optional frontier-API backend
+### T022 — Optional frontier-API backend ⏸ SUPERSEDED, see T082 / ADR 0010
 **Goal:** A pluggable frontier-model backend behind the same interface, used only if configured.
 **Start:** T021.
 **Do:** Add a frontier-API implementation of `LLM`, selected only when an API key is present in config; falls back to the open-weight backend otherwise.
 **Test:** Unit test with no API key set asserts the router uses the open-weight backend; with a fake key set (mocked call, not a real API hit), asserts it selects the frontier backend.
+**Update (2026-09-26):** `FrontierLLM` was built with only `generate()` ever implemented for real (`extract`/`classify`/`compare`/`match_topic` stayed `NotImplementedError`). Deleted entirely in T082, by explicit user decision to support exactly one LLM backend.
 
 ---
 
@@ -238,7 +240,9 @@ Tasks marked **⚠ research needed** depend on facts about Anarlog's webhook con
 
 ---
 
-## Phase 6 — Fork and wire up the real OpenViking service ⚠ research needed
+## Phase 6 — Fork and wire up the real OpenViking service ⚠ research needed — HISTORICAL, removed 2026-09-26
+
+**Everything in this phase describes OpenViking, which has been removed from the codebase entirely — see `docs/decisions/0011-remove-openviking-entirely.md` and T083 below.** Kept as a historical record of the original build (the submodule, container, and real client all existed and worked, in sequence, through T038), not a description of anything currently in the tree.
 
 > Blocked on **S1** below. Do not start T033 until S1's findings doc exists and its test has passed.
 
@@ -692,12 +696,26 @@ Hit T078's known Ollama/OpenViking contention issue three more times live while 
 **Test:** `apps/ingestion-service` suite green; a real end-to-end webhook POST persists chunks correctly with no embedding.
 **Status:** ✅ COMPLETE. Surfaced and fixed a real bug this exposed: pgvector rejects a zero-dimension vector, so the empty `[]` embedding had to be stored as SQL `NULL` instead (`chunk.embedding or None` in `libs/db/src/db/transcript_chunks.py::insert_transcript_chunks`) - the column was already nullable and the read side already treated `NULL` as `[]`. `uv run pytest apps/ingestion-service -v`: 18 passed (was 16 passed, 2 failed with the pgvector error, before the `or None` fix). This also resolved a real hang: `scripts/test_e2e_smoke.py` had been getting stuck mid-run (real Ollama embedding call inside ingestion-service's webhook handler, contended by OpenViking per T078) - confirmed resolved, no hang, in the same combined run reported under T080.
 
+### T082 — Single LLM backend: delete FrontierLLM and per-task tiering ✅ COMPLETE
+**Goal:** By explicit user decision, support exactly one LLM backend (Ollama) - "no multi-llm complication" - while keeping backends swappable in principle for later.
+**Start:** T021/T022 (both being superseded by this task).
+**Do:** Simplify `get_llm()` to always return `OllamaLLM()`; delete `FrontierLLM` and its test; delete `get_model_for()`/`DEFAULT_TASK_TIERS`/`DEFAULT_TIER_TO_MODEL` (confirmed via grep to be orphaned - never called outside their own tests); update `llm_router`'s `__init__.py` exports; rewrite `test_router.py`.
+**Test:** `libs/llm_router` and `apps/context-agent` suites green with no behavior change (context-agent's pipeline only ever called the `LLM` interface, never `OllamaLLM`/`FrontierLLM`/`get_model_for` directly).
+**Status:** ✅ COMPLETE. Full reasoning in `docs/decisions/0010-single-llm-backend-ollama-only.md`. Two things made this safe rather than risky: the tiering system had never actually been wired into `OllamaLLM` (which already used one model for every task via a single `self._model`), and `FrontierLLM` had never had a working implementation beyond `generate()` - so nothing real or tested was discarded, unlike OpenViking's dormant-preservation in T079. `docs/architecture.md`'s `libs/llm_router` section and guiding-constraints bullet updated; `docs/decisions/0004-ai-model-strategy.md` given a superseded-by note rather than rewritten, matching how 0009 treated its own predecessors.
+
+### T083 — Remove OpenViking entirely (submodule, client, infra) ✅ COMPLETE
+**Goal:** Go further than T079's "dormant, opt-in" and remove OpenViking from the codebase entirely, after its dormant container turned out to still cause real problems.
+**Start:** T079/T080 (this supersedes their "keep dormant" framing); triggered by a fresh terminal session hitting T078's exact Ollama-wedge signature (`ollama ps` showing OpenViking's own `qwen3.5:4b` stuck in `"Stopping..."`) because nothing had stopped its container after T079 made it non-default.
+**Do:** Remove the `vendor/openviking` git submodule properly (`git submodule deinit` + `git rm`, not just `rm -rf`); delete `RealOpenVikingClient`/`OpenVikingHTTPError` (`real.py`) and its test; simplify `get_knowledge_store()` to unconditionally return `PostgresOpenVikingClient()`; delete `infra/docker-compose.yml` and `infra/openviking-config/`; rewire the one remaining real-OpenViking test (`apps/context-agent/tests/test_worker.py`) and five manual walkthrough scripts that constructed `RealOpenVikingClient()` directly.
+**Test:** Full test suite green with no `RealOpenVikingClient`/`vendor/openviking` references remaining anywhere in application code; `docker ps` shows no OpenViking container to forget about.
+**Status:** ✅ COMPLETE. Full reasoning in `docs/decisions/0011-remove-openviking-entirely.md`. By explicit user decision, after being shown the tradeoff (losing the "reverse this cheaply" safety net 0009 built in, versus removing a recurring, easy-to-forget wedge risk and the still-outstanding general AGPL question). `docs/architecture.md` rewritten across §1-§9 to remove OpenViking from the current-state description entirely (kept as historical notes in §9 and in `docs/research/openviking.md`); `docs/decisions/0009` given a superseded-by note. `pyproject.toml`'s `norecursedirs` comment and `.gitignore`'s now-dead `infra/openviking-config/data/` entry cleaned up; `infra/README.md` rewritten (infra/ is now empty).
+
 ---
 
 ## Open design questions (not yet scheduled)
 
-### Is OpenViking still the right storage layer? ✅ RESOLVED — see Phase 15 / ADR 0009
-Resolved 2026-09-26: no. `get_knowledge_store()` now defaults to a plain Postgres table; OpenViking is kept in the tree as an opt-in alternative (`KNOWLEDGE_STORE=openviking`), not deleted. Full reasoning in `docs/decisions/0009-postgres-replaces-openviking-as-default-storage.md` and Phase 15 below.
+### Is OpenViking still the right storage layer? ✅ RESOLVED — see Phase 15 / ADR 0009, ADR 0011
+Resolved 2026-09-26: no. `get_knowledge_store()` now always returns a plain Postgres-backed client. OpenViking was first kept in the tree as an opt-in alternative (`KNOWLEDGE_STORE=openviking`, ADR 0009), then removed entirely the same day (ADR 0011) once its dormant container turned out to keep wedging Ollama regardless. Full reasoning in both ADRs and Phase 15 below.
 
 ### The 256-match glob cap is no longer theoretical
 Previously listed only as an "other outstanding gap" with no concrete evidence it mattered yet. Hit for real today: this shared dev OpenViking instance has accumulated enough test/fixture records across every session's testing that `list_all()`'s underlying glob call (`libs/openviking_client/src/openviking_client/real.py`) now returns exactly 256 matches - the cap - meaning brand-new records can silently fail to appear in `search_company_context()`/`GET /context` and anything built on them, depending on ordering. Caused two real test failures this session (`test_search_company_context_has_expected_structure`, `test_e2e_smoke.py`'s own T074 test) - not a regression in either test or in anything built today; confirmed by directly checking the glob response's match count. No pagination/cursor support exists in our client for this yet. This dev instance's accumulated data should probably be wiped before it causes more of this - flagged to the user, not done unilaterally.

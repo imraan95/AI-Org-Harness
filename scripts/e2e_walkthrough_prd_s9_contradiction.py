@@ -1,7 +1,8 @@
 """T076: manual walkthrough of PRD §9's contradiction-detection example -
-real Ollama extraction/classification/comparison/topic-matching, real
-OpenViking write, two meetings fed through the REAL pipeline in sequence,
-same style as scripts/e2e_manual_walkthrough.py and
+real Ollama extraction/classification/comparison/topic-matching, a real
+knowledge-store write (get_knowledge_store() - Postgres by default, per
+docs/decisions/0011), two meetings fed through the REAL pipeline in
+sequence, same style as scripts/e2e_manual_walkthrough.py and
 e2e_walkthrough_prd_s6_belief_evolution.py.
 
 PRD §9's example is fed verbatim: "SSO is not planned for Q4" (Product
@@ -21,10 +22,8 @@ script logs every match_topic/compare call directly (wrapping the real
 OllamaLLM) rather than inferring what happened from the written records'
 topic strings alone.
 
-Requires: a running OpenViking (OPENVIKING_API_KEY set) and a running
-Ollama with `llama3.2` pulled. For T078, point OLLAMA_BASE_URL at your own
-dedicated instance (see infra/README.md) so this doesn't contend with
-OpenViking's own models.
+Requires: a running Supabase (`supabase start`) and a running Ollama with
+`llama3.2` pulled.
 
 Run with:
     uv run python scripts/e2e_walkthrough_prd_s9_contradiction.py
@@ -41,7 +40,7 @@ from context_agent import process_transcript
 from db import get_session_factory, insert_transcript
 from knowledge_model import KnowledgeStatus
 from llm_router import OllamaLLM
-from openviking_client import RealOpenVikingClient
+from openviking_client import get_knowledge_store
 from shared_schemas import Transcript
 
 _CODENAME = f"nimbus-{uuid.uuid4().hex[:6]}"
@@ -126,7 +125,7 @@ def _print_record(record) -> None:
 
 async def main() -> None:
     llm = _LoggingLLM(OllamaLLM())
-    openviking = RealOpenVikingClient()
+    openviking = get_knowledge_store()
     try:
         print("--- Meeting 1: Product roadmap meeting ---\n")
         first_written = await _run_meeting(

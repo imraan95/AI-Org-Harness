@@ -1,9 +1,12 @@
 """T048: the worker loop, including the real end-to-end slice the task
 asks for - POST a webhook to ingestion-service, run the worker once,
-confirm a knowledge record exists in a REAL OpenViking.
+confirm a knowledge record exists in the real knowledge store
+(get_knowledge_store() - Postgres, per docs/decisions/0011).
 
-Skips itself if OpenViking isn't reachable or OPENVIKING_API_KEY isn't
-set, same as libs/openviking_client/tests/test_real_integration.py.
+No skip-guard needed: matches every other Postgres-backed test in this
+codebase (e.g. libs/db's own tests). Previously this constructed a real
+OpenViking client directly and skipped unless a running OpenViking + API
+key were configured - removed along with OpenViking itself.
 """
 
 from __future__ import annotations
@@ -11,15 +14,12 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-import os
 import uuid
 
-import httpx
-import pytest
 from db import dequeue_job, get_engine, get_session_factory, mark_job_done
 from fastapi.testclient import TestClient
 from llm_router import FakeLLM
-from openviking_client import FakeOpenVikingClient, RealOpenVikingClient
+from openviking_client import FakeOpenVikingClient, get_knowledge_store
 
 from context_agent import run_worker_once
 from ingestion_service.main import ANARLOG_WEBHOOK_SECRET, app
@@ -39,25 +39,6 @@ def _signed_post(client: TestClient, payload: dict):
             "x-anarlog-signature": signature,
         },
     )
-
-OPENVIKING_BASE_URL = os.environ.get("OPENVIKING_BASE_URL", "http://127.0.0.1:1933")
-
-
-def _openviking_is_up() -> bool:
-    try:
-        response = httpx.get(f"{OPENVIKING_BASE_URL}/health", timeout=2.0)
-        return response.status_code == 200 and response.json().get("status") == "ok"
-    except httpx.HTTPError:
-        return False
-
-
-_e2e_skip = pytest.mark.skipif(
-    not (_openviking_is_up() and os.environ.get("OPENVIKING_API_KEY")),
-    reason=(
-        "Needs a running OpenViking (infra/docker-compose.yml) and "
-        "OPENVIKING_API_KEY set to a user key - see docs/research/openviking.md §7"
-    ),
-)
 
 
 def _note_enhanced_payload(meeting_id: str, topic_hint: str) -> dict:
@@ -102,8 +83,7 @@ async def test_run_worker_once_returns_none_when_queue_is_empty():
     assert result is None
 
 
-@_e2e_skip
-async def test_worker_processes_a_webhook_ingested_transcript_into_openviking():
+async def test_worker_processes_a_webhook_ingested_transcript_into_the_knowledge_store():
     run_id = uuid.uuid4().hex[:8]
     topic_hint = f"worker_e2e_{run_id}"
     meeting_id = f"test-meeting-{uuid.uuid4()}"
@@ -117,21 +97,20 @@ async def test_worker_processes_a_webhook_ingested_transcript_into_openviking():
         [{"topic": topic_hint, "statement": f"Statement about {topic_hint}."}]
     )
     fake_llm.set_next_classify_result("fact")
-    openviking = RealOpenVikingClient()
+    knowledge_store = get_knowledge_store()
 
     engine = get_engine()
     session_factory = get_session_factory(engine)
     try:
         async with session_factory() as session:
-            written = await run_worker_once(session, fake_llm, openviking)
+            written = await run_worker_once(session, fake_llm, knowledge_store)
 
         assert written is not None
         assert len(written) == 1
         assert written[0].topic == topic_hint
 
-        found = await openviking.get_knowledge_by_id(written[0].id)
+        found = await knowledge_store.get_knowledge_by_id(written[0].id)
         assert found is not None
         assert found.topic == topic_hint
     finally:
-        await openviking.aclose()
         await engine.dispose()

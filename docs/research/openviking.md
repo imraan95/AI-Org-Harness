@@ -1,5 +1,7 @@
 # OpenViking Research Spike (S1)
 
+**Update (2026-09-26):** OpenViking has since been removed from the codebase entirely - see `docs/decisions/0011-remove-openviking-entirely.md`. This document is kept as a historical record of the research; nothing below describes code currently in the tree.
+
 Status: complete. Everything below was read directly from the official repo (`https://github.com/volcengine/OpenViking`, `main` branch) — the top-level README plus `docs/en/getting-started/03-quickstart-server.md`, `docs/en/api/01-overview.md`, `docs/en/api/02-resources.md`, `docs/en/api/03-filesystem.md`, `docs/en/api/06-retrieval.md`, `docs/en/concepts/08-session.md`, and the root `docker-compose.yml`. Nothing here is inferred from search snippets alone.
 
 ## 1. Repo and license

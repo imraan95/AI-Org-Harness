@@ -20,9 +20,6 @@ out/
 supabase/.branches
 supabase/.temp
 
-# OpenViking container's local data/index (config itself, ov.conf, is tracked)
-infra/openviking-config/data/
-
 # OS
 .DS_Store
 

@@ -11,3 +11,5 @@ Lightweight ADRs (architecture decision records) as the system evolves.
 - [0007 — Topic retrieval: exact match now, evaluate semantic fallback later](0007-topic-retrieval-exact-match.md)
 - [0008 — Bridge topic-name drift with an LLM call, not OpenViking's semantic search](0008-topic-matching-via-llm-not-openviking-semantic-search.md)
 - [0009 — Postgres replaces OpenViking as the default knowledge storage layer](0009-postgres-replaces-openviking-as-default-storage.md)
+- [0010 — Single LLM backend (Ollama only), no per-task tiering, no frontier option](0010-single-llm-backend-ollama-only.md)
+- [0011 — Remove OpenViking entirely, not just make it dormant](0011-remove-openviking-entirely.md)

@@ -1,8 +1,10 @@
 # 0009 — Postgres replaces OpenViking as the default knowledge storage layer
 
-**Status:** Accepted
+**Status:** Accepted (superseded in part - see update below)
 **Date:** 2026-09-26
 **Context:** build-plan.md's own "Open design questions — Is OpenViking still the right storage layer?", raised when 0008 removed the last thing our code asked OpenViking's semantic layer to do; forced into a real decision while scoping deployment (VPS sizing depends on whether Ollama/OpenViking need to stay hot in production).
+
+**Update (2026-09-26):** `docs/decisions/0011-remove-openviking-entirely.md` supersedes this decision's "kept dormant... in case the decision needs to be reversed" framing. OpenViking's submodule, client, and infra have been removed entirely, not kept opt-in - the dormant path turned out to have a real, recurring cost (its container had to be manually stopped or it kept wedging Ollama, even after this decision made it non-default). This file is left below as a historical record of the original plan.
 
 ## Decision
 

@@ -7,16 +7,15 @@ that should produce a knowledge update on the same topic.
 
 The LLM stays fake (FakeLLM) so the demo's extract/compare/classify results
 are deterministic and match the PRD's own example exactly - only the
-OpenViking side is real here, per build-plan T038 ("context-agent's dev
-entrypoint uses the real OpenVikingClient; unit tests continue to inject
-FakeOpenVikingClient" - this script IS that dev entrypoint).
+knowledge-store side is real here, per build-plan T038 ("context-agent's
+dev entrypoint uses the real store; unit tests continue to inject
+FakeOpenVikingClient" - this script IS that dev entrypoint). Writes to
+whichever store `get_knowledge_store()` resolves to - Postgres by default,
+per docs/decisions/0011 (OpenViking has been removed).
 
-Requires a running OpenViking service (see infra/docker-compose.yml) and
-OPENVIKING_API_KEY set to a user/admin key (not the root key - see
-docs/research/openviking.md §7).
+Requires a local Supabase instance running (`supabase start`).
 
 Run with:
-    export OPENVIKING_API_KEY=<your user key>
     uv run python scripts/seed.py
 """
 
@@ -28,7 +27,7 @@ from datetime import datetime, timezone
 from context_agent import process_transcript
 from knowledge_model import KnowledgeRecord
 from llm_router import FakeLLM
-from openviking_client import RealOpenVikingClient
+from openviking_client import get_knowledge_store
 from shared_schemas import Transcript
 
 
@@ -48,7 +47,7 @@ async def main() -> None:
     llm.set_next_compare_result("corroborating")
     llm.set_next_classify_result("customer_insight")
 
-    openviking = RealOpenVikingClient()
+    openviking = get_knowledge_store()
 
     try:
         now = datetime.now(timezone.utc)
@@ -90,7 +89,7 @@ async def main() -> None:
             print(f"Confidence: {record.confidence}")
             print(f"Status: {record.status.value}")
             print(f"Source: {transcript.meeting_title}\n")
-            print(f"Queryable directly from OpenViking as id: {record.id}\n")
+            print(f"Queryable directly from the knowledge store as id: {record.id}\n")
     finally:
         await openviking.aclose()
 
