@@ -7,13 +7,11 @@ dependencies = [
     "uvicorn>=0.30",
     "httpx>=0.27",
     "shared-schemas",
-    "llm-router",
     "db",
 ]
 
 [tool.uv.sources]
 shared-schemas = { workspace = true }
-llm-router = { workspace = true }
 db = { workspace = true }
 
 [build-system]

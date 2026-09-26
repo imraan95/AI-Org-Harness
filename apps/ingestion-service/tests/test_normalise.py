@@ -1,7 +1,5 @@
 from datetime import datetime, timezone
 
-from llm_router import FakeLLM
-
 from ingestion_service import build_transcript_chunks, normalise_anarlog_payload
 
 
@@ -75,16 +73,17 @@ def test_normalise_returns_no_chunks_for_empty_transcript_text():
     assert chunk_texts == []
 
 
-async def test_build_transcript_chunks_embeds_each_chunk_with_the_given_llm():
-    fake_llm = FakeLLM()
-    fake_llm.set_next_embed_result([0.1, 0.2, 0.3])
-
+async def test_build_transcript_chunks_wraps_each_chunk_with_no_embedding():
+    # No embedding step needed - nothing in this codebase reads
+    # TranscriptChunk.embedding back for anything (no similarity search
+    # is ever run against it), so this no longer takes/calls an LLM at
+    # all - see build_transcript_chunks's own docstring for why.
     chunks = await build_transcript_chunks(
-        fake_llm, "meeting_abc123", ["first chunk", "second chunk"]
+        "meeting_abc123", ["first chunk", "second chunk"]
     )
 
     assert len(chunks) == 2
     assert [chunk.order for chunk in chunks] == [0, 1]
     assert all(chunk.transcript_id == "meeting_abc123" for chunk in chunks)
-    assert all(chunk.embedding == [0.1, 0.2, 0.3] for chunk in chunks)
-    assert fake_llm.embed_calls == ["first chunk", "second chunk"]
+    assert all(chunk.text for chunk in chunks)
+    assert all(chunk.embedding == [] for chunk in chunks)

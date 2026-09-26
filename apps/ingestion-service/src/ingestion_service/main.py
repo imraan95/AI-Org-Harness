@@ -16,7 +16,6 @@ from db import (
     insert_transcript_chunks,
 )
 from fastapi import FastAPI, HTTPException, Request
-from llm_router import OllamaLLM
 
 from .normalise import build_transcript_chunks, normalise_anarlog_payload
 from .signature import verify_signature
@@ -76,23 +75,17 @@ async def receive_anarlog_webhook(request: Request) -> dict[str, str]:
 
     transcript, chunk_texts = normalise_anarlog_payload(payload)
 
-    # Created fresh per request rather than once at module scope: an
-    # httpx.AsyncClient (inside OllamaLLM) and a SQLAlchemy async engine
-    # both bind to whichever event loop is running when they're first
-    # used, and reusing one across requests that run on different loops
-    # (as pytest-asyncio's function-scoped loops do in tests) raises
-    # "Event loop is closed". A real per-request cost under uvicorn's one
-    # long-lived loop, but simplest thing that's actually correct - revisit
-    # if/when ingestion-service needs to handle real request volume.
-    #
-    # Embeddings always go through Ollama directly (see
-    # llm_router.FrontierLLM's comment - Anthropic has no embeddings API),
-    # not through get_llm()'s task-router, which might pick Frontier for
-    # everything else.
-    llm = OllamaLLM()
+    # Created fresh per request rather than once at module scope: a
+    # SQLAlchemy async engine binds to whichever event loop is running
+    # when it's first used, and reusing one across requests that run on
+    # different loops (as pytest-asyncio's function-scoped loops do in
+    # tests) raises "Event loop is closed". A real per-request cost under
+    # uvicorn's one long-lived loop, but simplest thing that's actually
+    # correct - revisit if/when ingestion-service needs to handle real
+    # request volume.
     session_factory = get_session_factory()
 
-    chunks = await build_transcript_chunks(llm, transcript.id, chunk_texts)
+    chunks = await build_transcript_chunks(transcript.id, chunk_texts)
 
     async with session_factory() as session:
         await insert_transcript(session, transcript)

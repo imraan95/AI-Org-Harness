@@ -16,7 +16,12 @@ async def insert_transcript_chunks(
             id=chunk.id,
             transcript_id=transcript_id,
             text=chunk.text,
-            embedding=chunk.embedding,
+            # pgvector rejects a zero-dimension vector, so an empty list
+            # (the new no-embedding default - see build_transcript_chunks)
+            # must be stored as SQL NULL, not `[]`. The nullable column and
+            # the read side already treat NULL as "no embedding" (see
+            # get_chunks_by_transcript_id below).
+            embedding=chunk.embedding or None,
             order=chunk.order,
         )
         session.add(row)

@@ -20,7 +20,6 @@ from datetime import datetime
 from typing import Any
 from uuid import uuid4
 
-from llm_router import LLM
 from shared_schemas import Transcript, TranscriptChunk
 
 # Arbitrary - no chunking strategy is specified anywhere in the PRD or
@@ -52,8 +51,7 @@ def normalise_anarlog_payload(
     """Pure - no I/O. Returns the `Transcript` plus raw chunk text.
 
     Call `build_transcript_chunks()` separately to turn that chunk text
-    into real `TranscriptChunk`s - that step calls an embedding model, so
-    it's kept out of this function on purpose.
+    into real `TranscriptChunk`s.
     """
     data = payload.get("data", {})
     meeting = data.get("meeting", {})
@@ -74,22 +72,29 @@ def normalise_anarlog_payload(
 
 
 async def build_transcript_chunks(
-    llm: LLM, transcript_id: str, chunk_texts: list[str]
+    transcript_id: str, chunk_texts: list[str]
 ) -> list[TranscriptChunk]:
-    """The I/O half of normalisation: embeds each chunk and wraps it into a
-    `TranscriptChunk`. Kept separate from `normalise_anarlog_payload` so
-    that function can stay pure and unit-testable without a model.
+    """Wraps each chunk of text into a `TranscriptChunk`. Kept separate
+    from `normalise_anarlog_payload` so that function can stay pure and
+    unit-testable on its own.
+
+    No longer computes an embedding per chunk (previously called an LLM's
+    `embed()` here - this was ingestion-service's only dependency on an
+    LLM backend at all). Nothing in this codebase ever reads
+    `TranscriptChunk.embedding` back for anything - no similarity search
+    is run against it anywhere - so it was pure dead weight: a real
+    network call to a model for a value nothing consumes, and (via
+    Ollama specifically) a contributor to the Ollama contention issue
+    (docs/build-plan.md T078). `embedding` stays `[]` unless/until a real
+    feature actually needs it.
     """
-    chunks: list[TranscriptChunk] = []
-    for order, text in enumerate(chunk_texts):
-        embedding = await llm.embed(text)
-        chunks.append(
-            TranscriptChunk(
-                id=f"chunk-{uuid4()}",
-                transcript_id=transcript_id,
-                text=text,
-                embedding=embedding,
-                order=order,
-            )
+    return [
+        TranscriptChunk(
+            id=f"chunk-{uuid4()}",
+            transcript_id=transcript_id,
+            text=text,
+            embedding=[],
+            order=order,
         )
-    return chunks
+        for order, text in enumerate(chunk_texts)
+    ]
