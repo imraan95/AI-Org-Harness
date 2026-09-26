@@ -7,10 +7,12 @@ dependencies = [
     "asyncpg>=0.29",
     "pgvector>=0.3",
     "shared-schemas",
+    "knowledge-model",
 ]
 
 [tool.uv.sources]
 shared-schemas = { workspace = true }
+knowledge-model = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

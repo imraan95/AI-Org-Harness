@@ -31,7 +31,7 @@ from db import (
 )
 from fastapi import Depends, FastAPI, HTTPException
 from knowledge_model import KnowledgeRecord, KnowledgeStatus, KnowledgeType
-from openviking_client import OpenVikingClient, RealOpenVikingClient
+from openviking_client import OpenVikingClient, get_knowledge_store
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -105,10 +105,15 @@ async def _all_taxonomy_types(
 
 async def get_openviking_client() -> AsyncIterator[OpenVikingClient]:
     # Created fresh per request, not once at module scope - an
-    # httpx.AsyncClient binds to whichever event loop first uses it, and a
-    # shared instance breaks under pytest's per-test event loops (see the
-    # same fix in ingestion-service's main.py, T047).
-    client = RealOpenVikingClient()
+    # httpx.AsyncClient (or a SQLAlchemy async session) binds to whichever
+    # event loop first uses it, and a shared instance breaks under
+    # pytest's per-test event loops (see the same fix in ingestion-
+    # service's main.py, T047).
+    #
+    # get_knowledge_store() defaults to the Postgres-backed store; set
+    # KNOWLEDGE_STORE=openviking to use OpenViking instead (dormant by
+    # default - see openviking_client.router's own docstring for why).
+    client = get_knowledge_store()
     try:
         yield client
     finally:

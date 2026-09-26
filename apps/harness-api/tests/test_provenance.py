@@ -1,37 +1,28 @@
 """T058: GET /knowledge/{id} includes a `sources` array (meeting
-title/date), joined back to `transcripts` via `libs/db`.
+title/date), joined back to `transcripts` via `libs/db`. Knowledge
+records are seeded through whichever knowledge store harness-api is
+actually configured to use (get_knowledge_store() - Postgres by default,
+see openviking_client's router.py).
 
-Needs OpenViking (for the knowledge record) AND a real Postgres (for the
-transcript) - skips itself unless both are reachable.
+Needs a real Postgres (for the transcript join, and by default for the
+knowledge record too) - skips itself unless reachable.
 """
 
 from __future__ import annotations
 
-import os
 import uuid
 from datetime import datetime, timezone
 
-import httpx
 import pytest
 from db import get_session_factory, insert_transcript
 from fastapi.testclient import TestClient
 from knowledge_model import KnowledgeRecord
-from openviking_client import RealOpenVikingClient
+from openviking_client import get_knowledge_store
 from shared_schemas import Transcript
 from sqlalchemy.exc import SQLAlchemyError
 
 from harness_api.auth import HARNESS_API_SERVICE_KEY
 from harness_api.main import app
-
-OPENVIKING_BASE_URL = os.environ.get("OPENVIKING_BASE_URL", "http://127.0.0.1:1933")
-
-
-def _openviking_is_up() -> bool:
-    try:
-        response = httpx.get(f"{OPENVIKING_BASE_URL}/health", timeout=2.0)
-        return response.status_code == 200 and response.json().get("status") == "ok"
-    except httpx.HTTPError:
-        return False
 
 
 def _db_is_up() -> bool:
@@ -55,11 +46,8 @@ def _db_is_up() -> bool:
 
 
 pytestmark = pytest.mark.skipif(
-    not (_openviking_is_up() and os.environ.get("OPENVIKING_API_KEY") and _db_is_up()),
-    reason=(
-        "Needs a running OpenViking + OPENVIKING_API_KEY, and a reachable "
-        "Postgres (`supabase start`)."
-    ),
+    not _db_is_up(),
+    reason="Needs a reachable Postgres (`supabase start`).",
 )
 
 _AUTH_HEADERS = {"x-service-key": HARNESS_API_SERVICE_KEY}
@@ -93,7 +81,7 @@ async def test_get_knowledge_by_id_includes_sources_for_its_transcript():
         observed_at=meeting_date,
         last_updated_at=meeting_date,
     )
-    openviking = RealOpenVikingClient()
+    openviking = get_knowledge_store()
     try:
         await openviking.write_knowledge(record)
     finally:
@@ -127,7 +115,7 @@ async def test_get_knowledge_by_id_returns_empty_sources_for_unknown_source_id()
         observed_at=datetime.now(timezone.utc),
         last_updated_at=datetime.now(timezone.utc),
     )
-    openviking = RealOpenVikingClient()
+    openviking = get_knowledge_store()
     try:
         await openviking.write_knowledge(record)
     finally:

@@ -65,6 +65,33 @@ class CustomKnowledgeTypeRow(Base):
     )
 
 
+class KnowledgeRecordRow(Base):
+    __tablename__ = "knowledge_records"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    type: Mapped[str] = mapped_column(Text)
+    topic: Mapped[str] = mapped_column(Text)
+    statement: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)
+    confidence: Mapped[float]
+    source_ids: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list)
+    people: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    supersedes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    superseded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    conflicts_with: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list)
+    workspace_id: Mapped[str] = mapped_column(Text, default="default")
+    source_id: Mapped[str] = mapped_column(Text, default="unspecified")
+    visibility: Mapped[str] = mapped_column(Text, default="internal")
+    owner: Mapped[str | None] = mapped_column(Text, nullable=True)
+    access_level: Mapped[str] = mapped_column(Text, default="standard")
+    edited_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class IngestionEventRow(Base):
     __tablename__ = "ingestion_events"
 

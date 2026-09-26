@@ -1,38 +1,21 @@
-"""T056: POST /knowledge/{id}/reject against a REAL running OpenViking.
-
-Same skip-guard and service-key-auth approach as test_approve.py.
+"""T056: POST /knowledge/{id}/reject, seeding fixtures through whichever
+knowledge store harness-api is actually configured to use
+(get_knowledge_store() - Postgres by default, see openviking_client's
+router.py). No skip-guard needed: matches every other Postgres-backed
+test in this codebase (e.g. libs/db's own tests).
 """
 
 from __future__ import annotations
 
-import os
 import uuid
 from datetime import datetime, timezone
 
-import httpx
-import pytest
 from fastapi.testclient import TestClient
 from knowledge_model import KnowledgeRecord
-from openviking_client import RealOpenVikingClient
+from openviking_client import get_knowledge_store
 
 from harness_api.auth import HARNESS_API_SERVICE_KEY
 from harness_api.main import app
-
-OPENVIKING_BASE_URL = os.environ.get("OPENVIKING_BASE_URL", "http://127.0.0.1:1933")
-
-
-def _openviking_is_up() -> bool:
-    try:
-        response = httpx.get(f"{OPENVIKING_BASE_URL}/health", timeout=2.0)
-        return response.status_code == 200 and response.json().get("status") == "ok"
-    except httpx.HTTPError:
-        return False
-
-
-pytestmark = pytest.mark.skipif(
-    not (_openviking_is_up() and os.environ.get("OPENVIKING_API_KEY")),
-    reason="Needs a running OpenViking + OPENVIKING_API_KEY (see docs/research/openviking.md §7).",
-)
 
 _AUTH_HEADERS = {"x-service-key": HARNESS_API_SERVICE_KEY}
 
@@ -56,7 +39,7 @@ def _fixture_record(*, status: str) -> KnowledgeRecord:
 
 async def test_reject_flips_a_pending_review_record_to_rejected():
     record = _fixture_record(status="pending_review")
-    openviking = RealOpenVikingClient()
+    openviking = get_knowledge_store()
     try:
         await openviking.write_knowledge(record)
     finally:

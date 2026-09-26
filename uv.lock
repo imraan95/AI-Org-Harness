@@ -5,8 +5,8 @@ resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'win32'",
     "python_full_version >= '3.14' and sys_platform != 'win32'",
     "python_full_version >= '3.11' and python_full_version < '3.14' and sys_platform == 'win32'",
-    "python_full_version < '3.11' and sys_platform == 'win32'",
     "python_full_version >= '3.11' and python_full_version < '3.14' and sys_platform != 'win32'",
+    "python_full_version < '3.11' and sys_platform == 'win32'",
     "python_full_version < '3.11' and sys_platform != 'win32'",
 ]
 
@@ -363,6 +363,7 @@ version = "0.1.0"
 source = { editable = "libs/db" }
 dependencies = [
     { name = "asyncpg" },
+    { name = "knowledge-model" },
     { name = "pgvector" },
     { name = "shared-schemas" },
     { name = "sqlalchemy", extra = ["asyncio"] },
@@ -371,6 +372,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "asyncpg", specifier = ">=0.29" },
+    { name = "knowledge-model", editable = "libs/knowledge_model" },
     { name = "pgvector", specifier = ">=0.3" },
     { name = "shared-schemas", editable = "libs/shared_schemas" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0" },
@@ -578,7 +580,6 @@ dependencies = [
     { name = "db" },
     { name = "fastapi" },
     { name = "httpx" },
-    { name = "llm-router" },
     { name = "shared-schemas" },
     { name = "uvicorn" },
 ]
@@ -588,7 +589,6 @@ requires-dist = [
     { name = "db", editable = "libs/db" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.27" },
-    { name = "llm-router", editable = "libs/llm_router" },
     { name = "shared-schemas", editable = "libs/shared_schemas" },
     { name = "uvicorn", specifier = ">=0.30" },
 ]
@@ -697,12 +697,14 @@ name = "openviking-client"
 version = "0.1.0"
 source = { editable = "libs/openviking_client" }
 dependencies = [
+    { name = "db" },
     { name = "httpx" },
     { name = "knowledge-model" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "db", editable = "libs/db" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "knowledge-model", editable = "libs/knowledge_model" },
 ]

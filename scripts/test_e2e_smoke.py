@@ -5,7 +5,7 @@ use (`search_company_context`, `get_evidence`) and confirm the seeded fact
 is retrievable with correct provenance (the real meeting title, not a
 fixture stand-in).
 
-Follows the same real-OpenViking, in-process-everything-else pattern as
+Follows the same in-process-everything-else pattern as
 apps/context-agent/tests/test_worker.py (posting the webhook + running the
 worker) and apps/mcp-server/tests/test_core_query_tools.py /
 test_get_evidence.py (calling MCP tools over an in-memory session, with
@@ -13,10 +13,10 @@ harness-api reached over ASGI rather than a live port). Uses FakeLLM for
 the worker's extract/classify step, matching test_worker.py's own e2e
 test precedent - real Ollama is only invoked for embeddings, via
 ingestion-service's own webhook handler, same as every other real-e2e test
-here.
-
-Skips itself if OpenViking isn't reachable or OPENVIKING_API_KEY isn't set
-- same convention every other real-service test in this repo uses.
+here. The worker writes through whichever knowledge store harness-api is
+actually configured to use (get_knowledge_store() - Postgres by default,
+see openviking_client's router.py). No skip-guard needed: matches every
+other Postgres-backed test in this codebase (e.g. libs/db's own tests).
 """
 
 from __future__ import annotations
@@ -24,40 +24,22 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-import os
 import uuid
 
 import httpx
-import pytest
 from db import get_engine, get_session_factory
 from fastapi.testclient import TestClient
 from harness_api.auth import HARNESS_API_SERVICE_KEY
 from harness_api.main import app as harness_api_app
 from llm_router import FakeLLM
 from mcp.shared.memory import create_connected_server_and_client_session
-from openviking_client import RealOpenVikingClient
+from openviking_client import get_knowledge_store
 
 import mcp_server.server as server_module
 from context_agent import run_worker_once
 from ingestion_service.main import ANARLOG_WEBHOOK_SECRET, app as ingestion_app
 from mcp_server.client import HarnessAPIClient
 from mcp_server.server import mcp
-
-OPENVIKING_BASE_URL = os.environ.get("OPENVIKING_BASE_URL", "http://127.0.0.1:1933")
-
-
-def _openviking_is_up() -> bool:
-    try:
-        response = httpx.get(f"{OPENVIKING_BASE_URL}/health", timeout=2.0)
-        return response.status_code == 200 and response.json().get("status") == "ok"
-    except httpx.HTTPError:
-        return False
-
-
-pytestmark = pytest.mark.skipif(
-    not (_openviking_is_up() and os.environ.get("OPENVIKING_API_KEY")),
-    reason="Needs a running OpenViking + OPENVIKING_API_KEY (see docs/research/openviking.md §7).",
-)
 
 
 def _signed_post(client: TestClient, payload: dict):
@@ -122,7 +104,7 @@ async def test_full_path_from_webhook_to_mcp_tools_with_correct_provenance(monke
         [{"topic": topic_hint, "statement": f"Confirmed the smoke path works for {topic_hint}."}]
     )
     fake_llm.set_next_classify_result("fact")
-    openviking = RealOpenVikingClient()
+    openviking = get_knowledge_store()
 
     engine = get_engine()
     session_factory = get_session_factory(engine)

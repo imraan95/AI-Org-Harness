@@ -1,12 +1,14 @@
-"""T050: GET /knowledge/{id} against a REAL running OpenViking.
+"""T050: GET /knowledge/{id}, seeding fixtures through whichever knowledge
+store harness-api is actually configured to use (get_knowledge_store() -
+Postgres by default, see openviking_client's router.py).
 T051: same endpoint, now behind a real Supabase Auth token.
 T052: same endpoint, also accepts a static service key instead of a token.
 
-Skips itself if OpenViking isn't reachable, OPENVIKING_API_KEY isn't set,
-or SUPABASE_SECRET_KEY/SUPABASE_PUBLISHABLE_KEY aren't set (needed to
-create a real test user and sign them in via Supabase Auth's own API -
-see docs/build-plan.md T051's own wording: "generated via the Supabase
-Auth admin API in the test setup", not a hand-crafted token).
+Skips itself only if SUPABASE_SECRET_KEY/SUPABASE_PUBLISHABLE_KEY aren't
+set (needed to create a real test user and sign them in via Supabase
+Auth's own API - see docs/build-plan.md T051's own wording: "generated
+via the Supabase Auth admin API in the test setup", not a hand-crafted
+token). No OpenViking-specific guard needed anymore.
 """
 
 from __future__ import annotations
@@ -19,37 +21,21 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 from knowledge_model import KnowledgeRecord
-from openviking_client import RealOpenVikingClient
+from openviking_client import get_knowledge_store
 
 from harness_api.auth import HARNESS_API_SERVICE_KEY
 from harness_api.main import app
 
-OPENVIKING_BASE_URL = os.environ.get("OPENVIKING_BASE_URL", "http://127.0.0.1:1933")
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "http://127.0.0.1:54321")
 SUPABASE_SECRET_KEY = os.environ.get("SUPABASE_SECRET_KEY")
 SUPABASE_PUBLISHABLE_KEY = os.environ.get("SUPABASE_PUBLISHABLE_KEY")
 
 
-def _openviking_is_up() -> bool:
-    try:
-        response = httpx.get(f"{OPENVIKING_BASE_URL}/health", timeout=2.0)
-        return response.status_code == 200 and response.json().get("status") == "ok"
-    except httpx.HTTPError:
-        return False
-
-
 pytestmark = pytest.mark.skipif(
-    not (
-        _openviking_is_up()
-        and os.environ.get("OPENVIKING_API_KEY")
-        and SUPABASE_SECRET_KEY
-        and SUPABASE_PUBLISHABLE_KEY
-    ),
+    not (SUPABASE_SECRET_KEY and SUPABASE_PUBLISHABLE_KEY),
     reason=(
-        "Needs a running OpenViking + OPENVIKING_API_KEY (see "
-        "docs/research/openviking.md §7), and SUPABASE_SECRET_KEY/"
-        "SUPABASE_PUBLISHABLE_KEY set from `supabase status` to create a "
-        "real test user via Supabase Auth."
+        "Needs SUPABASE_SECRET_KEY/SUPABASE_PUBLISHABLE_KEY set from "
+        "`supabase status` to create a real test user via Supabase Auth."
     ),
 )
 
@@ -103,7 +89,7 @@ async def test_get_knowledge_by_id_returns_a_seeded_record():
     record_id = f"K-test-{uuid.uuid4()}"
     record = _fixture_record(record_id)
 
-    openviking = RealOpenVikingClient()
+    openviking = get_knowledge_store()
     try:
         await openviking.write_knowledge(record)
     finally:
@@ -138,7 +124,7 @@ async def test_get_knowledge_by_id_returns_200_with_a_valid_service_key_and_no_u
     record_id = f"K-test-{uuid.uuid4()}"
     record = _fixture_record(record_id)
 
-    openviking = RealOpenVikingClient()
+    openviking = get_knowledge_store()
     try:
         await openviking.write_knowledge(record)
     finally:

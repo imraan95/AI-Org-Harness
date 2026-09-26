@@ -1,6 +1,10 @@
 """T063: `get_current_strategy`, `get_product_context`, `get_person_context`,
-`get_conflicting_information` against a REAL running OpenViking, calling an
-in-process harness-api over ASGI - same approach as test_get_evidence.py.
+`get_conflicting_information`, calling an in-process harness-api over ASGI -
+same approach as test_get_evidence.py. Fixtures are seeded through
+whichever knowledge store harness-api is actually configured to use
+(get_knowledge_store() - Postgres by default, see openviking_client's
+router.py). No skip-guard needed: matches every other Postgres-backed
+test in this codebase (e.g. libs/db's own tests).
 T064: output is now `format_answer()`'s prose - see the note in
 test_core_query_tools.py on why these check structure, not exact
 string equality against a separately-refetched list.
@@ -8,37 +12,19 @@ string equality against a separately-refetched list.
 
 from __future__ import annotations
 
-import os
 import uuid
 from datetime import datetime, timezone
 
 import httpx
-import pytest
 from harness_api.auth import HARNESS_API_SERVICE_KEY
 from harness_api.main import app as harness_api_app
 from knowledge_model import KnowledgeRecord
 from mcp.shared.memory import create_connected_server_and_client_session
-from openviking_client import RealOpenVikingClient
+from openviking_client import get_knowledge_store
 
 import mcp_server.server as server_module
 from mcp_server.client import HarnessAPIClient
 from mcp_server.server import mcp
-
-OPENVIKING_BASE_URL = os.environ.get("OPENVIKING_BASE_URL", "http://127.0.0.1:1933")
-
-
-def _openviking_is_up() -> bool:
-    try:
-        response = httpx.get(f"{OPENVIKING_BASE_URL}/health", timeout=2.0)
-        return response.status_code == 200 and response.json().get("status") == "ok"
-    except httpx.HTTPError:
-        return False
-
-
-pytestmark = pytest.mark.skipif(
-    not (_openviking_is_up() and os.environ.get("OPENVIKING_API_KEY")),
-    reason="Needs a running OpenViking + OPENVIKING_API_KEY (see docs/research/openviking.md §7).",
-)
 
 
 def _fixture_record(*, type: str, statement: str, status: str = "active") -> KnowledgeRecord:
@@ -67,7 +53,7 @@ def _asgi_harness_api_client() -> httpx.AsyncClient:
 
 
 async def _seed(record: KnowledgeRecord) -> None:
-    openviking = RealOpenVikingClient()
+    openviking = get_knowledge_store()
     try:
         await openviking.write_knowledge(record)
     finally:
