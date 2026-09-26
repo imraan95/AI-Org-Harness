@@ -1,8 +1,10 @@
 # 0004 — AI model strategy: open-weight default, swappable via a router
 
-**Status:** Accepted
+**Status:** Accepted (superseded in part - see update below)
 **Date:** 2026-09 (early planning)
 **Context:** PRD §11.
+
+**Update (2026-09-26):** `docs/decisions/0010-single-llm-backend-ollama-only.md` supersedes this decision's "frontier API optional" clause and its per-task tiering framing. Ollama is now the only supported backend, with no `FrontierLLM` class in the codebase and no `get_model_for()` tiering system - the tiering system had, in practice, never been wired into `OllamaLLM` in the first place. This file is left below as a historical record of the original plan.
 
 ## Decision
 

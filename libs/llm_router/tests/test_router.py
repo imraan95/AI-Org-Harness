@@ -1,30 +1,7 @@
-import pytest
-
-from llm_router import get_model_for
+from llm_router import OllamaLLM, get_llm
 
 
-def test_compare_defaults_to_the_configured_large_model():
-    assert get_model_for("compare") == "llama3.1:70b"
-
-
-def test_extract_defaults_to_the_configured_small_model():
-    assert get_model_for("extract") == "llama3.2"
-
-
-def test_match_topic_defaults_to_the_configured_large_model():
-    assert get_model_for("match_topic") == "llama3.1:70b"
-
-
-def test_tier_is_overridable_via_env_var(monkeypatch):
-    monkeypatch.setenv("LLM_TASK_COMPARE_TIER", "small")
-    assert get_model_for("compare") == "llama3.2"
-
-
-def test_model_for_a_tier_is_overridable_via_env_var(monkeypatch):
-    monkeypatch.setenv("LLM_TIER_LARGE_MODEL", "some-other-model")
-    assert get_model_for("compare") == "some-other-model"
-
-
-def test_unknown_task_raises_value_error():
-    with pytest.raises(ValueError):
-        get_model_for("not_a_real_task")
+def test_get_llm_returns_ollama():
+    # Per docs/decisions/0010-single-llm-backend-ollama-only.md: Ollama is
+    # the only supported backend - no branching, no api-key check.
+    assert isinstance(get_llm(), OllamaLLM)
