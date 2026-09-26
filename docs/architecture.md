@@ -2,7 +2,7 @@
 
 Companion to `prd.md`. Describes the MVP system as a buildable codebase: folder structure, component responsibilities, where state lives, and how services talk to each other.
 
-**Stack:** Next.js (frontend) · Supabase (Postgres + pgvector + Auth) · FastAPI/Python (backend services) · OpenViking (forked, separate service).
+**Stack:** Next.js (frontend) · Supabase (Postgres + pgvector + Auth) · FastAPI/Python (backend services). Knowledge storage defaults to a plain Postgres table (`knowledge_records`, inside Supabase); OpenViking (forked, separate service) is kept in the tree as an opt-in alternative behind the same interface, not the default — see `docs/decisions/0009-postgres-replaces-openviking-as-default-storage.md`.
 
 ## 1. Guiding constraints
 
@@ -10,7 +10,7 @@ From the PRD:
 
 - Meetings (via Anarlog) are the only MVP source. Slack, CRM, etc. are Phase 2/3 sensors added later — the folder structure should make adding a source a matter of adding a new ingestor, not rewriting the core.
 - The LLM must be swappable (open-weight by default, frontier API optional) behind a common interface.
-- OpenViking is part of the MVP, not a later experiment, and it runs as its own service — forked from OpenViking's open-source repository and vendored into this codebase, not imported as a library.
+- Knowledge storage is reached only through the `OpenVikingClient` interface (originally built so OpenViking could be swapped for a fake in tests). As of ADR 0009, the default implementation behind that interface is a plain Postgres table, not OpenViking — OpenViking stays vendored in the codebase as an opt-in alternative (`KNOWLEDGE_STORE=openviking`), since nothing above the interface had to change either way.
 - One trusted workspace, no complex RBAC — but every table carries `workspace_id`, `source_id`, `visibility`, `owner`, `access_level` so permissions can be added later without a rewrite.
 - Consumption is via MCP first, REST API second, web UI third.
 
@@ -19,7 +19,7 @@ From this conversation's stack choice:
 - **Frontend** is Next.js (TypeScript, App Router).
 - **Database + auth** is Supabase — a hosted/self-hostable Postgres with pgvector already available, plus built-in auth. This satisfies the PRD's "Postgres + pgvector" requirement directly; Supabase isn't a new dependency on top of it, it *is* the Postgres.
 - **Backend services** (ingestion, context agent, harness API, MCP server) are Python, built on FastAPI where they expose HTTP.
-- OpenViking's own storage stays separate from Supabase (see §9): confirmed by research to be a self-contained file/vector store, not Postgres, so there's no shared-database question at all — it's simply a separate service we talk to over HTTP.
+- OpenViking's own storage stays separate from Supabase (see §9): confirmed by research to be a self-contained file/vector store, not Postgres, so there's no shared-database question at all — it's simply a separate service we talk to over HTTP, when it's opted into at all (see ADR 0009).
 
 ## 2. High-level component map
 
@@ -38,16 +38,16 @@ From this conversation's stack choice:
               └────────────┼────────────┘
                            ▼
                   openviking_client (SDK)
-                           │  API calls (HTTP)
-                           ▼
-              ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐
-              │   OPENVIKING (own service)  │
-              │   forked from upstream OSS   │
-              │   Resources │ Memories │ Skills │
-              │   own storage (viking:// FS,  │
-              │   built-in vectors — no PG)   │
-              └ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘
+                  get_knowledge_store() picks the backend
                            │
+              ┌────────────┴─────────────────┐
+              ▼ default                       ▼ opt-in: KNOWLEDGE_STORE=openviking
+    SUPABASE knowledge_records      ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐
+    table (plain Postgres)          │   OPENVIKING (own service)  │
+                                     │   forked from upstream OSS,  │
+                                     │   own storage (viking:// FS) │
+                                     └ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘
+              └────────────┬─────────────────┘
                            ▼
                  HARNESS API (FastAPI)
               ◄── Supabase Auth JWT (web users)
@@ -62,7 +62,7 @@ From this conversation's stack choice:
                                     magic link)
 ```
 
-OpenViking is drawn with a dashed boundary because it is a separately deployed process with its own repo history (a fork we maintain), not a package that lives inside this codebase's own build.
+OpenViking is drawn with a dashed boundary because it is a separately deployed process with its own repo history (a fork we maintain), not a package that lives inside this codebase's own build — and, as of ADR 0009, not what's actually running by default either.
 
 ## 3. Repository / folder structure
 
@@ -83,7 +83,9 @@ org-harness/
 │
 ├── libs/                        # shared Python code, imported by the FastAPI/worker apps
 │   ├── llm_router/              # LLM.generate/extract/classify/compare/summarise, model-agnostic
-│   ├── openviking_client/       # thin SDK (httpx) that calls the OpenViking service's API
+│   ├── openviking_client/       # OpenVikingClient interface + two implementations: a Postgres-
+│   │                             # backed one (default, see get_knowledge_store()) and an httpx
+│   │                             # SDK for the vendored OpenViking service (opt-in)
 │   ├── knowledge_model/         # Pydantic KnowledgeRecord schema/enums/validation
 │   ├── shared_schemas/          # Pydantic Transcript/TranscriptChunk types
 │   └── db/                      # SQLAlchemy models + session for OUR Supabase tables
@@ -131,6 +133,8 @@ Supabase is **not** used for OpenViking's storage — see §9 for why, and the n
 
 ### vendor/openviking
 
+**As of ADR 0009, this is a dormant, opt-in alternative — not the default.** The default knowledge store is a plain Postgres table (`knowledge_records`), described in the `libs/openviking_client` section below. Everything in this section is still accurate for when `KNOWLEDGE_STORE=openviking` is set, and the code/tests here are kept working, just not exercised by default.
+
 The OpenViking memory/context layer from PRD §12, forked from its upstream open-source repository rather than written by us:
 
 - Brought in as a **git submodule**, pinned to a specific commit/tag (`ghcr.io/volcengine/openviking` is the official image if we run it via Docker instead of building from source).
@@ -145,7 +149,7 @@ Nothing outside `vendor/openviking` reads or writes its storage directly. All ac
 
 - `POST /webhooks/anarlog` receives new-transcript events from Anarlog (API/MCP/CLI as fallback or backfill).
 - Normalises the payload into the common `Transcript`/`TranscriptChunk` shape (`libs/shared_schemas`).
-- Writes the raw transcript and its chunks into **our own** Supabase tables via `libs/db`.
+- Writes the raw transcript and its chunks into **our own** Supabase tables via `libs/db`. Chunks are stored with no embedding (`transcript_chunks.embedding` is nullable, left `NULL`) — nothing in the codebase reads it back for similarity search, so computing one was pure cost; see the "Real fix" note under T078 in `build-plan.md`.
 - Enqueues a `transcript.ingested` job (in our own `jobs` table) for the Context Agent to pick up.
 - One subfolder per source (`sources/anarlog/`) so Phase 2 sources plug in alongside it without a new service.
 
@@ -211,13 +215,13 @@ The four-pane MVP UI from PRD §16: Company Memory, Conflicts, Sources, Harness.
 
 ### libs/openviking_client
 
-The only piece of the codebase allowed to talk to the vendored OpenViking service. An `httpx`-based client wrapping OpenViking's real HTTP API behind our own interface: `get_relevant_knowledge()`, `write_knowledge()`, `get_knowledge_by_id()`, `list_conflicts()`, `update_knowledge_status()`. Concretely:
+The only piece of the codebase allowed to write or read knowledge records directly. Everything else — `context-agent`, `harness-api` — calls the abstract `OpenVikingClient` interface (`get_relevant_knowledge()`, `write_knowledge()`, `get_knowledge_by_id()`, `list_conflicts()`, `list_by_type()`, `list_all()`, `update_knowledge_status()`, `update_knowledge_fields()`, `mark_superseded()`) and never knows which concrete backend answered the call.
 
-- `write_knowledge(record)` → `POST /api/v1/content/write`, writing `record` as a JSON file at `viking://resources/knowledge/{record.topic}/{record.id}.json`.
-- `get_relevant_knowledge(topic)` → `POST /api/v1/search/find` scoped to `viking://resources/knowledge/`, then `GET /api/v1/content/read` on each match to parse the JSON back into a `KnowledgeRecord`.
-- `get_knowledge_by_id(id)` → a direct `content/read` when the topic-scoped URI is known, or `POST /api/v1/search/glob` (`**/{id}.json`) otherwise.
+`get_knowledge_store()` (`router.py`) picks the backend at runtime — Postgres by default, OpenViking only when `KNOWLEDGE_STORE=openviking` is set:
 
-This is a deliberate design choice (not upstream's intended usage pattern) — see PRD §12 and `docs/research/openviking.md` §4 for why we're bypassing OpenViking's own session/memory feature.
+- **`PostgresOpenVikingClient` (default, per ADR 0009).** Backed by a plain `knowledge_records` table (`supabase/migrations/20260926090000_create_knowledge_records.sql`, `libs/db/src/db/knowledge_records.py`). Each `OpenVikingClient` method maps directly to a `libs/db` function — `write_knowledge` → `upsert_knowledge_record` (SQLAlchemy `session.merge()`, create-or-replace by primary key), `get_relevant_knowledge`/`get_knowledge_records_by_topic` → an exact `topic ==` match, `list_conflicts`/`list_by_type`/`list_all` → filtered `SELECT`s. No semantic search, no glob/grep — just SQL, which is all this interface actually needs since 0008 moved topic-matching to a direct LLM call.
+- **`RealOpenVikingClient` (opt-in).** The `httpx`-based client wrapping OpenViking's real HTTP API, as described in the `vendor/openviking` section above: `write_knowledge(record)` → `POST /api/v1/content/write` at `viking://resources/knowledge/{record.topic}/{record.id}.json`; `get_relevant_knowledge(topic)` → `POST /api/v1/search/find` + `GET /api/v1/content/read` per match; `get_knowledge_by_id(id)` → a direct `content/read` or `POST /api/v1/search/glob` (`**/{id}.json}`). This was a deliberate design choice bypassing OpenViking's own session/memory feature (see PRD §12 and `docs/research/openviking.md` §4) — still true, just no longer the default path.
+- **`FakeOpenVikingClient` (tests only).** An in-memory, list-backed stand-in, unaffected by any of the above.
 
 ### libs/llm_router
 
@@ -257,8 +261,9 @@ SQLAlchemy (async, via `asyncpg`) models and session management for **our own ta
 | Job queue | `jobs` | Transient — "transcript X needs processing." Not a system of record; if lost, `scripts/replay.py` rebuilds it from `transcripts`. |
 | Ingestion audit log | `ingestion_events` | Record of what came in from Anarlog and when. |
 | App users | Supabase's built-in `auth.users` | Managed entirely by Supabase Auth — we don't define this table ourselves. |
+| **Knowledge records (default, per ADR 0009)** | `knowledge_records` | The K-XXXXX schema from PRD §7, as plain columns (see `libs/db/src/db/models.py::KnowledgeRecordRow`) — one row per record, read/written only via `PostgresOpenVikingClient`. Same data the table below describes for OpenViking's opt-in path, just stored as SQL rows instead of JSON files. |
 
-**OpenViking's own storage** (a `viking://` virtual filesystem with a built-in vector index inside `vendor/openviking` — confirmed to have no Postgres involved at all, so this is a genuinely separate storage engine, not a second database instance):
+**OpenViking's own storage** (opt-in only, `KNOWLEDGE_STORE=openviking` — a `viking://` virtual filesystem with a built-in vector index inside `vendor/openviking`, confirmed to have no Postgres involved at all, so this is a genuinely separate storage engine, not a second database instance):
 
 | Data | Where | Notes |
 |---|---|---|
@@ -282,8 +287,9 @@ Anarlog ──webhook──► ingestion-service ──insert (libs/db)──►
                                                    │
                                      calls: llm_router (extract/compare/classify)
                                                    │
-                                     calls: openviking_client ──HTTP──►
-                                     OpenViking service [vendor/openviking, own file+vector store]
+                                     calls: openviking_client (get_knowledge_store()) ──►
+                                     Supabase knowledge_records table [default, ADR 0009]
+                                     — or, opt-in — OpenViking service [vendor/openviking]
                                                    │
 harness-api ──calls openviking_client (reads knowledge)──────────┘
      │        + reads Supabase via libs/db (evidence text)
@@ -299,8 +305,8 @@ harness-api ──calls openviking_client (reads knowledge)───────
 
 Key points:
 
-- **OpenViking is a network dependency, not an import**, and its internal storage is never touched by anything outside `vendor/openviking` — everything goes through its HTTP API.
-- **Only `context-agent` and `harness-api`'s human-review endpoints write to OpenViking**, both exclusively through `openviking_client`.
+- **Knowledge storage is reached only through `openviking_client`**, and by default that means a plain Supabase table, not OpenViking (ADR 0009). OpenViking stays available as a network dependency behind the same interface (`KNOWLEDGE_STORE=openviking`) — its internal storage is never touched by anything outside `vendor/openviking` when it is used.
+- **Only `context-agent` and `harness-api`'s human-review endpoints write knowledge records**, both exclusively through `openviking_client`.
 - **Only `libs/db` talks to Supabase's Postgres**, and only from `ingestion-service`, `context-agent`, and `harness-api` — never from `apps/web` directly, even though Supabase's Row Level Security would technically allow it.
 - **Supabase Auth is the only auth system we build against** — no custom password handling, no session table of our own.
 - **Only `libs/llm_router` talks to model providers.**
@@ -321,7 +327,10 @@ Key points:
 
 Per PRD §20: no fine-grained RBAC beyond the schema columns and the two coarse auth paths on `harness-api`, no multi-agent orchestration framework, no custom transcription, no graph database, no mobile app.
 
-## 9. Note on the OpenViking fork itself — resolved by the S1 research spike
+## 9. Note on the OpenViking fork itself — resolved by the S1 research spike, then superseded as the default by ADR 0009
+
+**Update (2026-09-26):** everything below is still an accurate record of the S1 research and the design decisions that followed it, but OpenViking is no longer the default knowledge store — see `docs/decisions/0009-postgres-replaces-openviking-as-default-storage.md`. The short version: once 0008 moved topic-matching off OpenViking's semantic search, nothing in this codebase used anything beyond plain file storage and glob/grep pattern matching — a role a plain Postgres table serves with less overhead and no outstanding AGPL question. OpenViking's code and tests stay in the tree, dormant, reachable via `KNOWLEDGE_STORE=openviking`.
+
 
 This used to flag OpenViking's real API shape, storage engine, and license as unverified. That research is now done — full findings in `docs/research/openviking.md`. Summary of what changed from the original assumption:
 

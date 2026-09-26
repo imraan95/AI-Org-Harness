@@ -350,7 +350,9 @@ Tasks marked **⚠ research needed** depend on facts about Anarlog's webhook con
 **Start:** T044, T009, S2 complete.
 **Do:** Implement a normaliser function (pure, no I/O) using the real Anarlog payload shape.
 **Test:** Unit test feeds a fixture Anarlog payload, asserts the output matches the `Transcript`/`TranscriptChunk` models from T009.
-**Status:** Done. `ingestion_service.normalise_anarlog_payload()` (pure) converts the envelope into a `Transcript` + raw chunk-text strings; `build_transcript_chunks()` (async, calls a real embedding model) turns those into `TranscriptChunk`s. Required adding `LLM.embed()` across the whole `llm_router` interface (`OllamaLLM` calls `/api/embeddings` with `qwen3-embedding:0.6b`, already pulled locally from T035; `FrontierLLM.embed` raises `NotImplementedError` - Anthropic has no embeddings API; `FakeLLM.embed` is a canned test double) - decided via explicit choice ("build real embeddings now") over stubbing, since nothing in the codebase had embedding support yet. Two open gaps carried from `docs/research/anarlog.md`, handled defensively rather than guessed at as fact: `meeting_date` falls back to the envelope's `created_at` (delivery time, not confirmed meeting time), and `participants` entries are accepted as either plain strings or objects (`name`/`display_name`). Chunk size (2000 chars, `textwrap.wrap`) is an arbitrary default - no chunking strategy exists in the PRD.
+**Status:** Done. `ingestion_service.normalise_anarlog_payload()` (pure) converts the envelope into a `Transcript` + raw chunk-text strings; `build_transcript_chunks()` turns those into `TranscriptChunk`s. Two open gaps carried from `docs/research/anarlog.md`, handled defensively rather than guessed at as fact: `meeting_date` falls back to the envelope's `created_at` (delivery time, not confirmed meeting time), and `participants` entries are accepted as either plain strings or objects (`name`/`display_name`). Chunk size (2000 chars, `textwrap.wrap`) is an arbitrary default - no chunking strategy exists in the PRD.
+
+**⏸ Superseded (2026-09-26):** this originally called a real embedding model (`LLM.embed()`, `OllamaLLM` via Ollama's `/api/embeddings`) per chunk. Removed in Phase 15 below - nothing in the codebase ever read `TranscriptChunk.embedding` back for similarity search, so it was pure cost (and a contributor to the Ollama contention issue, T078). `embedding` now stays `[]`/`NULL` unless a real feature needs it. `LLM.embed()` itself stays on the interface (still implemented in `OllamaLLM`/`FakeLLM`, still `NotImplementedError` in `FrontierLLM`) in case something else needs it later - only the call site in `ingestion-service` was removed.
 
 ### T046 — Persist on webhook receipt ✅ COMPLETE
 **Goal:** Store the normalised transcript.
@@ -667,10 +669,35 @@ Hit T078's known Ollama/OpenViking contention issue three more times live while 
 
 ---
 
+## Phase 15 — Storage layer simplification
+
+### T079 — Postgres-backed knowledge store, replacing OpenViking as the default ✅ COMPLETE
+**Goal:** Resolve the "Is OpenViking still the right storage layer?" open question (Phase 14) with a real implementation, not just a decision on paper.
+**Start:** 0008 (topic-matching no longer depends on OpenViking's semantic search); T078 (documents the Ollama contention OpenViking's container contributes to).
+**Do:** Add a `knowledge_records` table; implement `PostgresOpenVikingClient` against the existing `OpenVikingClient` interface; add `get_knowledge_store()` to pick the backend (Postgres default, `KNOWLEDGE_STORE=openviking` opt-in); wire `harness-api`'s dependency injection to use it.
+**Test:** `libs/db libs/openviking_client` full suite green against the new implementation, exercised through the abstract interface the same way `test_fake.py` already does.
+**Status:** ✅ COMPLETE. Full detail in `docs/decisions/0009-postgres-replaces-openviking-as-default-storage.md`. `uv run pytest libs/db libs/openviking_client -v`: 33 passed (10 pre-existing, unrelated `RealOpenVikingClient` integration-test failures - real OpenViking's own `401`s, environmental, not a regression).
+
+### T080 — Rewire every OpenViking-seeded test fixture to the new default ✅ COMPLETE
+**Goal:** Keep every test suite connected to whatever `get_knowledge_store()` actually resolves to, so tests don't silently validate against a backend the app no longer reads from.
+**Start:** T079.
+**Do:** Audit every test file that constructs `RealOpenVikingClient()` directly to seed fixtures for `harness-api`/`mcp-server`; swap each to seed through `get_knowledge_store()` instead; remove the now-unneeded `OPENVIKING_API_KEY`-gated skip guards.
+**Test:** Full `apps/harness-api apps/mcp-server scripts/test_e2e_smoke.py` suite green with `KNOWLEDGE_STORE` unset (Postgres default).
+**Status:** ✅ COMPLETE. ~13 files rewired: 8 in `apps/harness-api/tests`, 4 in `apps/mcp-server/tests`, `scripts/test_e2e_smoke.py`. `apps/context-agent/tests/test_worker.py` deliberately left untouched - it constructs and passes its own `RealOpenVikingClient()` directly into the function under test, independent of harness-api's default, so it was never actually affected. This gap was caught before being declared done: running the real suite first showed 0 failures only because `OPENVIKING_API_KEY` happens to be unset in the dev shell, masking the disconnect - flagged honestly rather than accepted at face value. `uv run pytest apps/harness-api -v`: 33 passed, 6 skipped (pre-existing, unrelated). Combined `apps/mcp-server scripts/test_e2e_smoke.py apps/context-agent -v`: 43 passed, 1 skipped (the deliberately-untouched real-OpenViking test in `test_worker.py`, which needs a live `OPENVIKING_API_KEY` to run).
+
+### T081 — Drop the dead-weight chunk embedding step in ingestion-service ✅ COMPLETE
+**Goal:** Remove ingestion-service's only remaining dependency on an LLM backend, since nothing reads the value it produces.
+**Start:** Confirmed via grep that no code anywhere reads `TranscriptChunk.embedding`/`TranscriptChunkRow.embedding` back for any similarity search.
+**Do:** Remove the `llm.embed()` call from `build_transcript_chunks`; `embedding` stays `[]`; drop the now-unused `llm-router` dependency from `apps/ingestion-service`.
+**Test:** `apps/ingestion-service` suite green; a real end-to-end webhook POST persists chunks correctly with no embedding.
+**Status:** ✅ COMPLETE. Surfaced and fixed a real bug this exposed: pgvector rejects a zero-dimension vector, so the empty `[]` embedding had to be stored as SQL `NULL` instead (`chunk.embedding or None` in `libs/db/src/db/transcript_chunks.py::insert_transcript_chunks`) - the column was already nullable and the read side already treated `NULL` as `[]`. `uv run pytest apps/ingestion-service -v`: 18 passed (was 16 passed, 2 failed with the pgvector error, before the `or None` fix). This also resolved a real hang: `scripts/test_e2e_smoke.py` had been getting stuck mid-run (real Ollama embedding call inside ingestion-service's webhook handler, contended by OpenViking per T078) - confirmed resolved, no hang, in the same combined run reported under T080.
+
+---
+
 ## Open design questions (not yet scheduled)
 
-### Is OpenViking still the right storage layer?
-Now that 0008 has moved topic-matching off OpenViking's semantic search entirely, our own code no longer uses any of OpenViking's semantic/VLM machinery - only plain file storage plus `glob`/`grep` pattern matching. Worth asking, before wider rollout, whether a plain database would serve that narrower "store facts + exact-match lookup" role with less overhead - especially given OpenViking's AGPL licensing still has an outstanding Legal sign-off item. Not acted on here; logged for a later decision.
+### Is OpenViking still the right storage layer? ✅ RESOLVED — see Phase 15 / ADR 0009
+Resolved 2026-09-26: no. `get_knowledge_store()` now defaults to a plain Postgres table; OpenViking is kept in the tree as an opt-in alternative (`KNOWLEDGE_STORE=openviking`), not deleted. Full reasoning in `docs/decisions/0009-postgres-replaces-openviking-as-default-storage.md` and Phase 15 below.
 
 ### The 256-match glob cap is no longer theoretical
 Previously listed only as an "other outstanding gap" with no concrete evidence it mattered yet. Hit for real today: this shared dev OpenViking instance has accumulated enough test/fixture records across every session's testing that `list_all()`'s underlying glob call (`libs/openviking_client/src/openviking_client/real.py`) now returns exactly 256 matches - the cap - meaning brand-new records can silently fail to appear in `search_company_context()`/`GET /context` and anything built on them, depending on ordering. Caused two real test failures this session (`test_search_company_context_has_expected_structure`, `test_e2e_smoke.py`'s own T074 test) - not a regression in either test or in anything built today; confirmed by directly checking the glob response's match count. No pagination/cursor support exists in our client for this yet. This dev instance's accumulated data should probably be wiped before it causes more of this - flagged to the user, not done unilaterally.

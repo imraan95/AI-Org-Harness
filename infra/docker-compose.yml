@@ -2,6 +2,11 @@
 # Based on vendor/openviking/docker-compose.yml, trimmed to what we need for local dev:
 # no Caddy reverse proxy (we don't need public HTTPS), no VikingBot.
 #
+# OPT-IN ONLY as of docs/decisions/0009: the app's default knowledge store is now a
+# plain Postgres table (get_knowledge_store(), libs/openviking_client), not this
+# service. Only start this if you're testing with KNOWLEDGE_STORE=openviking set -
+# it is not needed for normal local dev anymore.
+#
 # NOTE (open item, T034): the image tag below is `latest`, not pinned to v0.4.21.
 # OpenViking's Docker image tags (v0.4.14.2, v0.4.16.dev1, ...) don't line up with its
 # git release tags 1:1, and no image tag matching v0.4.21 could be confirmed to exist
