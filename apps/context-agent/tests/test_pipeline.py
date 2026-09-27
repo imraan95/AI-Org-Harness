@@ -74,16 +74,18 @@ async def test_retrieve_returns_existing_knowledge_for_matching_topic():
     assert existing[0].id == existing_record.id
 
 
-async def test_retrieve_falls_back_to_llm_topic_matching_when_exact_match_misses():
-    """docs/decisions/0008-topic-matching-via-llm-not-openviking-semantic-
-    search.md: a worded-differently topic should still be found via the
-    LLM, not reported as if nothing existing is on this subject."""
+async def test_retrieve_finds_a_token_overlap_variant_without_calling_the_llm():
+    """T085: canonicalize_topic (a deterministic pre-filter, ported from
+    supermemoryai/company-brain's tag-canonicalization idea) catches a
+    reworded-but-token-overlapping topic before match_topic() ever runs -
+    this exact pair used to require an LLM call (see git history); it's a
+    real behavior change, not a regression, so the FakeLLM here is
+    deliberately given no canned match_topic result at all."""
     client = FakeOpenVikingClient()
     existing_record = _knowledge_record(topic="Enterprise SSO")
     await client.write_knowledge(existing_record)
 
     fake_llm = FakeLLM()
-    fake_llm.set_next_match_topic_result("Enterprise SSO")
     candidates = [{"topic": "SSO for Enterprise Customers", "statement": "..."}]
 
     results = await _retrieve(fake_llm, client, candidates)
@@ -92,8 +94,31 @@ async def test_retrieve_falls_back_to_llm_topic_matching_when_exact_match_misses
     candidate, existing = results[0]
     assert len(existing) == 1
     assert existing[0].id == existing_record.id
+    assert fake_llm.match_topic_calls == []
+
+
+async def test_retrieve_falls_back_to_llm_topic_matching_when_exact_match_misses():
+    """docs/decisions/0008-topic-matching-via-llm-not-openviking-semantic-
+    search.md: a worded-differently topic with no shared substantial words
+    (so canonicalize_topic's deterministic check can't bridge it) should
+    still be found via the LLM, not reported as if nothing existing is on
+    this subject."""
+    client = FakeOpenVikingClient()
+    existing_record = _knowledge_record(topic="Vacation policy")
+    await client.write_knowledge(existing_record)
+
+    fake_llm = FakeLLM()
+    fake_llm.set_next_match_topic_result("Vacation policy")
+    candidates = [{"topic": "Time off rules", "statement": "..."}]
+
+    results = await _retrieve(fake_llm, client, candidates)
+
+    assert len(results) == 1
+    candidate, existing = results[0]
+    assert len(existing) == 1
+    assert existing[0].id == existing_record.id
     assert fake_llm.match_topic_calls == [
-        (candidates[0], ["Enterprise SSO"])
+        (candidates[0], ["Vacation policy"])
     ]
 
 

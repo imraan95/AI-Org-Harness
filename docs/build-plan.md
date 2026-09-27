@@ -712,7 +712,28 @@ Hit T078's known Ollama/OpenViking contention issue three more times live while 
 
 ---
 
+## Phase 16 — Retrieval/comparison accuracy hardening
+
+### T084 — `match_topic()` reliability: model swap + canonicalization pre-filter ✅ COMPLETE
+**Goal:** Get a real accuracy number on the pipeline instead of relying on manual walkthroughs, then fix what it found.
+**Start:** T075/T076 (the manual walkthroughs that first hit topic-name drift live); 0008.
+**Do:** Build `scripts/eval_pipeline_accuracy.py` - a real eval harness against the live pipeline (real Ollama, a scoped view of the real Postgres store, no cross-case leakage) - then fix whatever it measures.
+**Test:** Topic-matching accuracy on the eval harness's labeled cases improves from a real, reproducible baseline.
+**Status:** ✅ COMPLETE. Full reasoning in `docs/decisions/0012-match-topic-model-swap-and-canonicalization-prefilter.md`. First real run: 40.9% topic-matching accuracy, every "has existing knowledge" case wrongly called "new." Root-caused via raw `curl` reproduction (not guessed at) to a genuine `llama3.2` capability ceiling - two rounds of prompt tuning produced confidently-wrong answers in opposite directions on the same pair, then `qwen3.5:4b` reasoned through the same pairs correctly. Shipped a narrow, documented exception to `docs/decisions/0010`'s "one model for every task": `match_topic()` alone now calls `qwen3.5:4b`, everything else stays on `llama3.2`. Also shipped a deterministic, zero-LLM canonicalization pre-filter (`apps/context-agent/src/context_agent/topic_canonicalize.py`, idea ported from `supermemoryai/company-brain`'s open-sourced `tags.ts`) ahead of the LLM fallback, catching formatting/wording variants for free. A real false-positive design flaw (matching on any single shared generic word) was found and fixed via self-testing against the eval harness's own near-miss cases before ever running it live. Result: topic-matching accuracy **40.9% → 86.4%**. The eval harness's own diagnostic (`_reconstruct_candidates()`) needed a follow-up fix after this landed - it replays logged proxy calls, but the new pure-function canonicalizer has no log to replay, so it now independently re-calls `canonicalize_topic()` with the same inputs `pipeline.py` uses. `uv run pytest libs/llm_router apps/context-agent -v`: all green, no regressions.
+
+### T085 — `compare()` determinism fix + superseding/contradicting investigation (unresolved)
+**Goal:** Same treatment as T084, for `compare()`'s relationship classification.
+**Start:** T084 (same eval harness), which also measured `compare()`'s relationship-classification accuracy at 63.6%.
+**Do:** Fix what the eval harness found.
+**Test:** Relationship-classification accuracy improves; specifically, `superseding` is producible at all.
+**Status:** **Partially complete - shipped the easy part, the hard part is documented but unsolved.** Full detail in `docs/decisions/0013-compare-determinism-fix-and-superseding-investigation.md`. Shipped: `temperature: 0.0` on `compare()` (same non-determinism fix as `match_topic()`'s own, previously missing here). Investigated and **did not fix**: `llama3.2` and `qwen3.5:4b` both never produce the word "superseding" at all, on any real or reproduced case, regardless of prompt wording - confirmed with a reframed prompt (business-outcome definitions plus a worked example) and a full model swap, neither of which moved it. A closed, hosted "decision model" API (TypeSafe AI's "Jev") and a same-week open-weight recreation ("Kev") were investigated as a structurally different approach but parked before any accuracy test, by explicit user decision, on cost/dependency-risk and customer-data-handling grounds. A mature, established alternative (DeBERTa-v3 NLI, via plain `transformers`, no new server) was then spiked for real (`scripts/spike_nli_compare.py`): fast (150-270ms/case, no latency regression) but not more accurate - it collapses `superseding` into `contradiction` on 3 of 4 real cases and mislabels one as unrelated entirely, confirming the actual distinction is a business judgment (does this need human review) rather than something recoverable from sentence-pair semantics alone, by any approach tried. Left as an open product decision (merge `superseding` into `contradicting` operationally vs. pursue real labeled data for fine-tuning vs. something else) rather than resolved unilaterally - parked at the user's explicit direction to move on to other work.
+
+---
+
 ## Open design questions (not yet scheduled)
+
+### How should `superseding` vs. `contradicting` actually be decided? — open, see T085 / ADR 0013
+Not resolved. `compare()` cannot reliably tell "a routine expected update" (superseding) apart from "a reversal that needs human review" (contradicting) - tried across two LLMs, a reframed prompt, and a mature open-source NLI classifier, all of which collapse the distinction the same way. Two real options on the table, neither built: merge `superseding` into `contradicting` operationally (safer, more review volume) or fine-tune on real outcome-labelled data from this workflow (more accurate, needs a dataset that doesn't exist yet). Needs a product-owner call on review-volume tolerance, not another model swap.
 
 ### Is OpenViking still the right storage layer? ✅ RESOLVED — see Phase 15 / ADR 0009, ADR 0011
 Resolved 2026-09-26: no. `get_knowledge_store()` now always returns a plain Postgres-backed client. OpenViking was first kept in the tree as an opt-in alternative (`KNOWLEDGE_STORE=openviking`, ADR 0009), then removed entirely the same day (ADR 0011) once its dormant container turned out to keep wedging Ollama regardless. Full reasoning in both ADRs and Phase 15 below.

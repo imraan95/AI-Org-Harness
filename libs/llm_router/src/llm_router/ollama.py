@@ -13,6 +13,17 @@ DEFAULT_OLLAMA_MODEL = "llama3.2"
 # Already pulled locally as part of T035's OpenViking setup (its own
 # embedding config), so re-using it here needs no extra download.
 DEFAULT_OLLAMA_EMBEDDING_MODEL = "qwen3-embedding:0.6b"
+# Targeted exception to ADR 0010 ("one model for every task"), for this one
+# call only - a real eval run (scripts/eval_pipeline_accuracy.py) measured
+# match_topic() at a 0% bridge rate on `DEFAULT_OLLAMA_MODEL`, including on
+# pairs differing only in formatting. Two rounds of prompt tuning didn't fix
+# it (same 2-token instant answer both times, confidently wrong in opposite
+# directions) - a live comparison then showed qwen3.5:4b reasoning through
+# the same pairs correctly (with visible chain-of-thought, ~15-25s/call vs.
+# llama3.2's ~0.1s). Only match_topic() uses this - extract/classify/
+# compare are unaffected and still share `DEFAULT_OLLAMA_MODEL`, so ADR
+# 0010's simplification still holds everywhere else.
+DEFAULT_OLLAMA_MATCH_TOPIC_MODEL = "qwen3.5:4b"
 
 
 class OllamaLLM(LLM):
@@ -37,6 +48,9 @@ class OllamaLLM(LLM):
         self._embedding_model = os.environ.get(
             "OLLAMA_EMBEDDING_MODEL", DEFAULT_OLLAMA_EMBEDDING_MODEL
         )
+        self._match_topic_model = os.environ.get(
+            "OLLAMA_MATCH_TOPIC_MODEL", DEFAULT_OLLAMA_MATCH_TOPIC_MODEL
+        )
         # Local model calls (especially a cold start, while Ollama loads the
         # model into memory) can take a lot longer than httpx's 5s default.
         # 300s, not 120s (see infra/README.md's Ollama contention note) -
@@ -51,10 +65,15 @@ class OllamaLLM(LLM):
         )
 
     async def _call(
-        self, prompt: str, *, json_mode: bool = False, temperature: float | None = None
+        self,
+        prompt: str,
+        *,
+        json_mode: bool = False,
+        temperature: float | None = None,
+        model: str | None = None,
     ) -> str:
         payload: dict[str, Any] = {
-            "model": self._model,
+            "model": model or self._model,
             "prompt": prompt,
             "stream": False,
         }
@@ -130,7 +149,18 @@ class OllamaLLM(LLM):
             f"Existing knowledge on this topic:\n{existing_statements}\n\n"
             "Reply with ONLY the single word, nothing else."
         )
-        raw = await self._call(prompt)
+        # temperature=0.0 for the same reason match_topic() already uses it
+        # (see that method's own comment): this is a judgment call, not
+        # extract()'s open-ended job, and should give the same answer to
+        # the same input every time. This was missing here even though the
+        # reasoning already applied - a real eval run (scripts/
+        # eval_pipeline_accuracy.py) measured relationship-classification
+        # accuracy at 63.6% with real confusion between contradicting/
+        # superseding/corroborating, and a raw one-off comparison outside
+        # the eval run got the right answer on a case the eval run got
+        # wrong - consistent with unseeded sampling noise, not a
+        # capability ceiling like match_topic()'s was.
+        raw = await self._call(prompt, temperature=0.0)
         return raw.strip().lower()
 
     async def match_topic(
@@ -156,15 +186,44 @@ class OllamaLLM(LLM):
         # the number of existing topics ever grows enough for this to be
         # too slow.
         for existing_topic in existing_topics:
+            # A real eval run (scripts/eval_pipeline_accuracy.py) measured
+            # this at a 0% bridge rate, including on pairs differing only
+            # in formatting (e.g. "GDS connectivity" vs "gds_connectivity")
+            # - the model was reading a formatting difference as a subject
+            # difference. A first fix added only a positive example (same
+            # subject, different formatting) - that overcorrected the other
+            # way, confidently matching genuinely unrelated phrases (e.g.
+            # "Mobile push notifications" vs "Enterprise SSO") that share
+            # no real subject at all. This version gives both a positive
+            # and a negative example side by side, so the model has both
+            # signals to calibrate against instead of just one direction.
+            # The negative example is deliberately unrelated to any real
+            # eval-case topic, so this is a general calibration fix, not
+            # something tuned to pass our own test cases.
             prompt = (
                 "Do these two phrases refer to the same real-world "
-                "subject, just worded differently (e.g. \"Enterprise "
-                "SSO\" and \"SSO for Enterprise Customers\" are the same "
-                "subject)? Reply with ONLY \"yes\" or \"no\".\n\n"
+                "subject, or are they different subjects that just "
+                "happen to share some words or formatting? Differences "
+                "in capitalization, spacing, punctuation, or style "
+                "(snake_case vs. a natural phrase, abbreviations, etc.) "
+                "do NOT make two phrases different - only judge the "
+                "underlying subject.\n\n"
+                "Examples:\n"
+                "- \"Enterprise SSO\", \"enterprise_sso\", and \"SSO for "
+                "Enterprise Customers\" ARE the same subject (same topic, "
+                "just formatted/worded differently).\n"
+                "- \"Cloud storage pricing\" and \"Cloud storage "
+                "security\" are NOT the same subject (they share words, "
+                "but are genuinely different topics).\n\n"
+                "Reply with ONLY \"yes\" or \"no\".\n\n"
                 f"Phrase 1: {candidate.get('topic', '')}\n"
                 f"Phrase 2: {existing_topic}"
             )
-            raw = (await self._call(prompt, temperature=0.0)).strip().lower()
+            raw = (
+                await self._call(
+                    prompt, temperature=0.0, model=self._match_topic_model
+                )
+            ).strip().lower()
             if raw.startswith("yes"):
                 return existing_topic
         return None

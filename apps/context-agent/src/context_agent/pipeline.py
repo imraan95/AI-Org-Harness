@@ -11,6 +11,7 @@ from openviking_client import OpenVikingClient
 from shared_schemas import Transcript
 
 from .confidence import confidence_bucket, score_confidence
+from .topic_canonicalize import canonicalize_topic
 
 logger = logging.getLogger(__name__)
 
@@ -28,11 +29,17 @@ async def _retrieve(
     Tries an exact topic-string match first (cheap, and precise whenever
     it hits). If that comes up empty, the candidate's own topic might
     just be worded differently from an earlier meeting's for the same
-    real-world subject - docs/decisions/0008-topic-matching-via-llm-not-
-    openviking-semantic-search.md found OpenViking's own semantic search
-    unreliable for bridging that gap on our JSON-shaped records, so this
-    asks the LLM directly whether any existing topic is the same subject
-    before concluding there's genuinely nothing existing on this topic.
+    real-world subject. Before asking the LLM about it (match_topic(),
+    below), a cheap deterministic check (canonicalize_topic - T085, ported
+    from supermemoryai/company-brain's tag-canonicalization idea) catches
+    plain formatting/spelling variants - "GDS connectivity" vs
+    "gds_connectivity" - for free, no network call, no sampling variance.
+    Real semantic drift ("Enterprise SSO" vs "SSO for Enterprise
+    Customers") still needs match_topic()'s real judgment -
+    docs/decisions/0008-topic-matching-via-llm-not-openviking-semantic-
+    search.md found OpenViking's own semantic search unreliable for
+    bridging that gap on our JSON-shaped records, so that part still asks
+    the LLM directly before concluding there's genuinely nothing existing.
     """
     results: list[tuple[dict[str, Any], list[KnowledgeRecord]]] = []
     for candidate in candidates:
@@ -40,7 +47,9 @@ async def _retrieve(
         if not existing:
             all_records = await openviking.list_all()
             existing_topics = sorted({record.topic for record in all_records})
-            matched_topic = await llm.match_topic(candidate, existing_topics)
+            matched_topic = canonicalize_topic(candidate["topic"], existing_topics)
+            if matched_topic is None:
+                matched_topic = await llm.match_topic(candidate, existing_topics)
             if matched_topic is not None:
                 existing = [r for r in all_records if r.topic == matched_topic]
         results.append((candidate, existing))
