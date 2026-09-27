@@ -15,3 +15,4 @@ Lightweight ADRs (architecture decision records) as the system evolves.
 - [0011 — Remove OpenViking entirely, not just make it dormant](0011-remove-openviking-entirely.md)
 - [0012 — `match_topic()` reliability: a targeted model swap, plus a deterministic canonicalization pre-filter](0012-match-topic-model-swap-and-canonicalization-prefilter.md)
 - [0013 — `compare()`: shipped a determinism fix; investigated but did not solve the superseding/contradicting confusion](0013-compare-determinism-fix-and-superseding-investigation.md)
+- [0014 — Personal-vault architecture pivot: themes move to markdown, shared/org vault deferred](0014-personal-vault-pivot-markdown-theme-config.md)

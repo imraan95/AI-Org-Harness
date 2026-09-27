@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timezone
 
 import pytest
@@ -5,8 +6,7 @@ from knowledge_model import KnowledgeRecord, KnowledgeStatus, KnowledgeType
 from llm_router import FakeLLM
 from openviking_client import FakeOpenVikingClient
 from shared_schemas import Transcript
-
-from db import get_engine, get_session_factory
+from vault_config import add_theme
 
 from context_agent import process_transcript
 from context_agent.pipeline import (
@@ -267,10 +267,13 @@ async def test_tag_themes_can_return_zero_or_more_than_one_match():
     assert tagged[0]["themes"] == ["customer_problems"]
 
 
-async def test_process_transcript_leaves_themes_empty_when_no_session_is_passed():
-    """Every existing caller (every test above this one, plus any future
-    caller with no Postgres session) keeps working unchanged - passing no
-    session is a real, supported no-op, not just an untested default."""
+async def test_process_transcript_leaves_themes_empty_for_a_workspace_with_no_themes_file(
+    monkeypatch, tmp_path
+):
+    """A workspace with no themes.md yet (the common/default case) costs
+    nothing extra - no vault_config.read_themes() hit finds anything, so
+    no matches_theme() calls happen at all."""
+    monkeypatch.setenv("VAULTS_ROOT", str(tmp_path))
     fake_llm = FakeLLM()
     fake_llm.set_next_extract_result(
         [{"topic": "enterprise_sso", "statement": "SSO is being requested"}]
@@ -278,21 +281,25 @@ async def test_process_transcript_leaves_themes_empty_when_no_session_is_passed(
     fake_llm.set_next_classify_result("customer_insight")
     client = FakeOpenVikingClient()
 
-    written = await process_transcript(_transcript(), fake_llm, client)
+    written = await process_transcript(
+        _transcript(), fake_llm, client, workspace_id=f"no_themes_{uuid.uuid4().hex}"
+    )
 
     assert written[0].themes == []
     assert fake_llm.matches_theme_calls == []
 
 
-async def test_process_transcript_applies_real_configured_themes_when_session_is_passed():
-    """Integration check for T086's actual wiring: given a real session,
-    process_transcript fetches the workspace's real custom themes
-    (migration 20260927100000's 3 preselected ones) and tags candidates
-    with them - the thing that was missing before this task (a theme
-    could be defined via T077's taxonomy UI but never actually applied).
-    """
-    engine = get_engine()
-    session_factory = get_session_factory(engine)
+async def test_process_transcript_applies_themes_configured_in_the_markdown_file(
+    monkeypatch, tmp_path
+):
+    """Integration check for the markdown-config wiring: process_transcript
+    reads a workspace's themes.md file and tags candidates against every
+    theme in it - the personal-vault replacement for what used to be a
+    Postgres custom_knowledge_types lookup."""
+    monkeypatch.setenv("VAULTS_ROOT", str(tmp_path))
+    workspace_id = f"ws_{uuid.uuid4().hex}"
+    add_theme(workspace_id, "customer_problems", "Customer Problems")
+    add_theme(workspace_id, "strategic", "Strategic")
 
     fake_llm = FakeLLM()
     fake_llm.set_next_extract_result(
@@ -302,21 +309,14 @@ async def test_process_transcript_applies_real_configured_themes_when_session_is
     fake_llm.set_next_matches_theme_result(True)
     client = FakeOpenVikingClient()
 
-    async with session_factory() as session:
-        written = await process_transcript(
-            _transcript(), fake_llm, client, session=session
-        )
+    written = await process_transcript(
+        _transcript(), fake_llm, client, workspace_id=workspace_id
+    )
 
     assert len(written) == 1
-    # Set comparison, not list equality - list_custom_knowledge_types'
-    # ordering among rows inserted in the same migration statement isn't
-    # guaranteed, and the point here is "were the real configured themes
-    # actually applied", not "in what order".
-    assert set(written[0].themes) == {"customer_problems", "org_decisions", "strategic"}
+    assert set(written[0].themes) == {"customer_problems", "strategic"}
     asked_labels = {label for _, label in fake_llm.matches_theme_calls}
-    assert asked_labels == {"Customer Problems", "Org Decisions", "Strategic"}
-
-    await engine.dispose()
+    assert asked_labels == {"Customer Problems", "Strategic"}
 
 
 async def test_write_persists_records_with_correct_statuses_for_impact_level():

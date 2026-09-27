@@ -1,17 +1,17 @@
-// T069: the authenticated 4-pane shell - a nav with Memory, Conflicts,
-// Sources, Harness, wrapping every page in this route group. Middleware
-// (T068) already keeps anyone unauthenticated out of every route except
-// /login, so nothing extra is needed here to gate access - this layout
-// is reached only when logged in.
+// T069: the authenticated shell - a nav wrapping every page in this route
+// group. Middleware (T068) already keeps anyone unauthenticated out of
+// every route except /login, so nothing extra is needed here to gate
+// access - this layout is reached only when logged in.
+//
+// Nav cut down (by decision) from 5 items to 3: Harness (now the homepage,
+// "/"), Conflicts, Taxonomy. Memory and Sources were removed outright.
 import Link from "next/link";
 
 import { logout } from "./actions";
 
 const NAV_ITEMS = [
-  { href: "/memory", label: "Memory" },
+  { href: "/", label: "Harness" },
   { href: "/conflicts", label: "Conflicts" },
-  { href: "/sources", label: "Sources" },
-  { href: "/harness", label: "Harness" },
   { href: "/taxonomy", label: "Taxonomy" },
 ];
 

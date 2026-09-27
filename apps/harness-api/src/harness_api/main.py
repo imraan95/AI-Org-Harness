@@ -15,6 +15,11 @@ custom knowledge types on top of the fixed `KnowledgeType` built-ins; POST
 /knowledge/{id}/edit also accepts a `type`, validated against built-in ∪
 custom here (KnowledgeRecord.type itself is now a plain str - see
 knowledge_model's models.py comment).
+Post-T077 (personal-vault architecture pivot): a workspace's custom types
+("themes") now live in a per-workspace markdown file (vault_config),
+not the Postgres custom_knowledge_types table - these routes just read
+and write that file instead. The table/migration are left in place,
+unused.
 """
 
 from __future__ import annotations
@@ -22,18 +27,13 @@ from __future__ import annotations
 from datetime import datetime
 from typing import AsyncIterator
 
-from db import (
-    create_custom_knowledge_type,
-    delete_custom_knowledge_type,
-    get_session_factory,
-    get_transcript,
-    list_custom_knowledge_types,
-)
+from db import get_session_factory, get_transcript
 from fastapi import Depends, FastAPI, HTTPException
 from knowledge_model import KnowledgeRecord, KnowledgeStatus, KnowledgeType
 from openviking_client import OpenVikingClient, get_knowledge_store
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+from vault_config import add_theme, read_themes, remove_theme
 
 from .auth import get_current_user_or_service
 
@@ -94,12 +94,10 @@ def _builtin_taxonomy_types() -> list[TaxonomyType]:
     ]
 
 
-async def _all_taxonomy_types(
-    session: AsyncSession, workspace_id: str = "default"
-) -> list[TaxonomyType]:
-    custom = await list_custom_knowledge_types(session, workspace_id)
+def _all_taxonomy_types(workspace_id: str = "default") -> list[TaxonomyType]:
+    custom = read_themes(workspace_id)
     return _builtin_taxonomy_types() + [
-        TaxonomyType(key=row.key, label=row.label, builtin=False) for row in custom
+        TaxonomyType(key=key, label=label, builtin=False) for key, label in custom
     ]
 
 
@@ -289,13 +287,12 @@ async def edit_knowledge(
     edit: KnowledgeEditRequest,
     _user: dict = Depends(get_current_user_or_service),
     openviking: OpenVikingClient = Depends(get_openviking_client),
-    session: AsyncSession = Depends(get_db_session),
 ) -> KnowledgeRecord:
     record = await openviking.get_knowledge_by_id(knowledge_id)
     if record is None:
         raise HTTPException(status_code=404, detail="knowledge record not found")
     if edit.type is not None:
-        valid_keys = {t.key for t in await _all_taxonomy_types(session)}
+        valid_keys = {t.key for t in _all_taxonomy_types()}
         if edit.type not in valid_keys:
             raise HTTPException(
                 status_code=400,
@@ -309,39 +306,36 @@ async def edit_knowledge(
 @app.get("/taxonomy/types", response_model=list[TaxonomyType])
 async def get_taxonomy_types(
     _user: dict = Depends(get_current_user_or_service),
-    session: AsyncSession = Depends(get_db_session),
 ) -> list[TaxonomyType]:
-    return await _all_taxonomy_types(session)
+    return _all_taxonomy_types()
 
 
 @app.post("/taxonomy/types", response_model=TaxonomyType, status_code=201)
 async def create_taxonomy_type(
     body: TaxonomyTypeCreateRequest,
     _user: dict = Depends(get_current_user_or_service),
-    session: AsyncSession = Depends(get_db_session),
 ) -> TaxonomyType:
     if body.key in {t.value for t in KnowledgeType}:
         raise HTTPException(
             status_code=409, detail=f"{body.key!r} is already a built-in type"
         )
-    row = await create_custom_knowledge_type(session, "default", body.key, body.label)
-    if row is None:
+    added = add_theme("default", body.key, body.label)
+    if not added:
         raise HTTPException(
             status_code=409, detail=f"a custom type with key {body.key!r} already exists"
         )
-    return TaxonomyType(key=row.key, label=row.label, builtin=False)
+    return TaxonomyType(key=body.key, label=body.label, builtin=False)
 
 
 @app.delete("/taxonomy/types/{key}", status_code=204)
 async def delete_taxonomy_type(
     key: str,
     _user: dict = Depends(get_current_user_or_service),
-    session: AsyncSession = Depends(get_db_session),
 ) -> None:
     if key in {t.value for t in KnowledgeType}:
         raise HTTPException(
             status_code=400, detail="built-in types can't be deleted"
         )
-    deleted = await delete_custom_knowledge_type(session, "default", key)
-    if not deleted:
+    removed = remove_theme("default", key)
+    if not removed:
         raise HTTPException(status_code=404, detail="custom type not found")

@@ -1,13 +1,16 @@
 // T073: Harness pane (PRD §16.D: "what an AI would retrieve" for a topic).
+// Moved here (from (shell)/harness/page.tsx) to be the app's homepage - the
+// nav was cut down to 3 pages (Harness, Conflicts, Taxonomy) and Harness is
+// now the default landing view, so it lives at "/" instead of "/harness".
+// Memory and Sources were removed outright, not just unlinked.
 //
 // The MCP tool this mirrors, `search_company_context()` (T062), takes no
 // query itself - it just returns every active record via `GET /context`
 // and lets the model read the whole thing. There's no dedicated
-// server-side search endpoint, so - same pattern as T070/T071/T072 - this
-// pane fetches that same `/context` list and filters it client-side by
-// the typed topic (substring match against topic + statement), as a
-// preview of what's actually in the pool `search_company_context()` would
-// hand the model.
+// server-side search endpoint, so this pane fetches that same `/context`
+// list and filters it client-side by the typed topic (substring match
+// against topic + statement), as a preview of what's actually in the pool
+// `search_company_context()` would hand the model.
 import { getHarnessApiClient } from "@/lib/harness-api/client";
 import type { components } from "@/lib/harness-api/schema";
 

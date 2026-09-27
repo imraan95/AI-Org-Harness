@@ -8,6 +8,7 @@ dependencies = [
     "openviking-client",
     "knowledge-model",
     "db",
+    "vault-config",
 ]
 
 [tool.uv.sources]
@@ -16,6 +17,7 @@ llm-router = { workspace = true }
 openviking-client = { workspace = true }
 knowledge-model = { workspace = true }
 db = { workspace = true }
+vault-config = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

@@ -5,12 +5,11 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from db import list_custom_knowledge_types
 from knowledge_model import KnowledgeRecord, KnowledgeStatus, KnowledgeType
 from llm_router import LLM
 from openviking_client import OpenVikingClient
 from shared_schemas import Transcript
-from sqlalchemy.ext.asyncio import AsyncSession
+from vault_config import read_themes
 
 from .confidence import confidence_bucket, score_confidence
 from .topic_canonicalize import canonicalize_topic
@@ -238,22 +237,18 @@ async def process_transcript(
     transcript: Transcript,
     llm: LLM,
     openviking: OpenVikingClient,
-    session: AsyncSession | None = None,
+    workspace_id: str = "default",
 ) -> list[KnowledgeRecord]:
     """Entry point for the context agent pipeline (PRD §3, §6, §9).
 
     Runs Extract, Retrieve, Compare, Classify, (Tag themes) and Write end
     to end, and returns whatever knowledge records were written.
 
-    `session` (build-plan T086) is optional and defaults to skipping
-    theme-tagging entirely, so every existing caller that doesn't pass
-    one (every test that predates T086, plus any future caller with no
-    Postgres session handy) keeps working exactly as before - `themes`
-    just stays empty. Passing a real session (the same one the caller
-    already has open for `custom_knowledge_types`, e.g. `worker.py`'s)
-    is what turns a workspace's user-defined themes from decorative
-    (definable via T077's taxonomy UI, but never actually applied) into
-    live.
+    Themes come from `vault_config.read_themes(workspace_id)` - a plain
+    markdown file (personal-vault architecture pivot), not the old
+    Postgres `custom_knowledge_types` table. A workspace with no
+    themes.md yet gets an empty list back, same "costs nothing extra"
+    behavior as before.
     """
     logger.info("Received transcript %s for processing", transcript.id)
 
@@ -276,10 +271,7 @@ async def process_transcript(
     classified = await _classify(llm, compared)
     logger.info("Classified %d candidate(s)", len(classified))
 
-    custom_themes: list[tuple[str, str]] = []
-    if session is not None:
-        custom_types = await list_custom_knowledge_types(session, "default")
-        custom_themes = [(row.key, row.label) for row in custom_types]
+    custom_themes = read_themes(workspace_id)
     tagged = await _tag_themes(llm, custom_themes, classified)
     logger.info(
         "Tagged themes for %d candidate(s) against %d configured theme(s)",

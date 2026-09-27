@@ -10,12 +10,14 @@ dependencies = [
     "knowledge-model",
     "pyjwt[crypto]>=2.8",
     "db",
+    "vault-config",
 ]
 
 [tool.uv.sources]
 openviking-client = { workspace = true }
 knowledge-model = { workspace = true }
 db = { workspace = true }
+vault-config = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
