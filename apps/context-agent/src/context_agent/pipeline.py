@@ -11,7 +11,7 @@ from openviking_client import OpenVikingClient
 from shared_schemas import Transcript
 from vault_config import read_themes
 
-from .confidence import confidence_bucket, score_confidence
+from .confidence import score_confidence
 from .topic_canonicalize import canonicalize_topic
 
 logger = logging.getLogger(__name__)
@@ -144,27 +144,6 @@ async def _tag_themes(
     return tagged
 
 
-def _determine_status(
-    existing: list[KnowledgeRecord], relationship: str, confidence: float
-) -> KnowledgeStatus:
-    """PRD §9/§17, build-plan T042: decide what status a newly-classified
-    candidate is written with.
-
-    - Contradicts existing knowledge -> CONFLICTING. This is a distinct
-      status from PENDING_REVIEW (not just "high impact, needs review"),
-      so a contradiction is always an explicit conflict record - never
-      silently written as a superseding/active record, and never
-      resolved by anything in this module (T043).
-    - Low-confidence with nothing else corroborating it -> PENDING_REVIEW.
-    - Otherwise -> ACTIVE.
-    """
-    if relationship == "contradicting":
-        return KnowledgeStatus.CONFLICTING
-    if confidence_bucket(confidence) == "low" and not existing:
-        return KnowledgeStatus.PENDING_REVIEW
-    return KnowledgeStatus.ACTIVE
-
-
 async def _write(
     openviking: OpenVikingClient,
     classified: list[dict[str, Any]],
@@ -172,10 +151,17 @@ async def _write(
 ) -> list[KnowledgeRecord]:
     """Persist each classified candidate to OpenViking.
 
-    High-impact changes are written as `pending_review` or `conflicting`
-    rather than `active`, so a human approves/resolves them before
-    they're treated as current (PRD §17) - the system never
-    auto-publishes or auto-resolves those (T043).
+    Personal-vault architecture pivot (docs/decisions/0014, build-plan
+    Phase 18): every record is written straight to ACTIVE. T042/T043's
+    original human-in-the-loop conflict/pending-review gate (a
+    contradiction or low-confidence write held back for a *different*
+    person to approve/reject) no longer applies now that a vault has one
+    owner, not a team reviewing each other's writes - `KnowledgeStatus`
+    still defines CONFLICTING/PENDING_REVIEW/REJECTED, and the
+    approve/reject routes still exist, but nothing in this pipeline
+    produces those statuses anymore. `supersedes` linking is a separate
+    concern (versioning, not review-gating) and is unchanged - a
+    "superseding" candidate still replaces the prior record on its topic.
 
     T058: `llm.extract()` only ever returns `topic`/`statement` (see
     ollama.py's extract prompt) - nothing populates a candidate's own
@@ -190,13 +176,6 @@ async def _write(
         existing = item["existing"]
         relationship = item["relationship"]
         confidence = item["confidence"]
-
-        status = _determine_status(existing, relationship, confidence)
-        conflicts_with = (
-            [record.id for record in existing]
-            if status == KnowledgeStatus.CONFLICTING
-            else []
-        )
 
         now = datetime.now(timezone.utc)
 
@@ -217,7 +196,7 @@ async def _write(
             type=item["type"],
             topic=item["topic"],
             statement=item["statement"],
-            status=status,
+            status=KnowledgeStatus.ACTIVE,
             confidence=confidence,
             source_ids=item.get("source_ids") or ([transcript_id] if transcript_id else []),
             people=item.get("people", []),
@@ -226,7 +205,7 @@ async def _write(
             created_at=now,
             observed_at=now,
             last_updated_at=now,
-            conflicts_with=conflicts_with,
+            conflicts_with=[],
         )
         await openviking.write_knowledge(record)
         written.append(record)

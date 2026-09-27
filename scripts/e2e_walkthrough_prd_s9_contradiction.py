@@ -1,4 +1,12 @@
-"""T076: manual walkthrough of PRD §9's contradiction-detection example -
+"""Historical note (docs/decisions/0014, build-plan Phase 18): the
+personal-vault pivot removed the CONFLICTING/pending-review gate this
+script was written to demonstrate - `_write()` now always writes ACTIVE,
+so every run below will hit the "No conflicting-status record was
+written" branch, not a bug. Left as-is (real Ollama/Supabase run,
+not part of the automated suite) rather than rewritten, since its
+value now is mostly historical - see ADR 0014 for the current behavior.
+
+T076: manual walkthrough of PRD §9's contradiction-detection example -
 real Ollama extraction/classification/comparison/topic-matching, a real
 knowledge-store write (get_knowledge_store() - Postgres by default, per
 docs/decisions/0011), two meetings fed through the REAL pipeline in

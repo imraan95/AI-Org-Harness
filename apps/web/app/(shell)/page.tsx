@@ -1,8 +1,9 @@
 // T073: Harness pane (PRD §16.D: "what an AI would retrieve" for a topic).
 // Moved here (from (shell)/harness/page.tsx) to be the app's homepage - the
-// nav was cut down to 3 pages (Harness, Conflicts, Taxonomy) and Harness is
-// now the default landing view, so it lives at "/" instead of "/harness".
-// Memory and Sources were removed outright, not just unlinked.
+// nav was cut down to Harness and Taxonomy, and Harness is now the
+// default landing view, so it lives at "/" instead of "/harness".
+// Memory, Sources, and (later) Conflicts were removed outright, not just
+// unlinked - see docs/decisions/0014 for Conflicts.
 //
 // The MCP tool this mirrors, `search_company_context()` (T062), takes no
 // query itself - it just returns every active record via `GET /context`

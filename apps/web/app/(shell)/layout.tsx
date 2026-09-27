@@ -5,13 +5,15 @@
 //
 // Nav cut down (by decision) from 5 items to 3: Harness (now the homepage,
 // "/"), Conflicts, Taxonomy. Memory and Sources were removed outright.
+// Conflicts removed too (docs/decisions/0014, build-plan Phase 18): the
+// personal-vault pivot dropped the human-review conflict-gating workflow
+// that page existed to drive, so it no longer has anything to show.
 import Link from "next/link";
 
 import { logout } from "./actions";
 
 const NAV_ITEMS = [
   { href: "/", label: "Harness" },
-  { href: "/conflicts", label: "Conflicts" },
   { href: "/taxonomy", label: "Taxonomy" },
 ];
 

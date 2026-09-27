@@ -319,7 +319,11 @@ async def test_process_transcript_applies_themes_configured_in_the_markdown_file
     assert asked_labels == {"Customer Problems", "Strategic"}
 
 
-async def test_write_persists_records_with_correct_statuses_for_impact_level():
+async def test_write_persists_every_record_as_active_regardless_of_relationship():
+    """Personal-vault pivot (docs/decisions/0014): no more human-review
+    gate - every written record is ACTIVE and conflicts_with stays empty,
+    whatever `relationship`/`confidence` came in as. `supersedes` linking
+    (a separate concern) is covered by its own tests below."""
     client = FakeOpenVikingClient()
     conflicting_existing = _knowledge_record()
     classified = [
@@ -355,10 +359,10 @@ async def test_write_persists_records_with_correct_statuses_for_impact_level():
     assert written[0].status == KnowledgeStatus.ACTIVE
     assert written[0].conflicts_with == []
     assert written[0].source_ids == ["meeting_test"]
-    assert written[1].status == KnowledgeStatus.PENDING_REVIEW
+    assert written[1].status == KnowledgeStatus.ACTIVE
     assert written[1].conflicts_with == []
-    assert written[2].status == KnowledgeStatus.CONFLICTING
-    assert written[2].conflicts_with == [conflicting_existing.id]
+    assert written[2].status == KnowledgeStatus.ACTIVE
+    assert written[2].conflicts_with == []
 
     for record in written:
         fetched = await client.get_knowledge_by_id(record.id)
@@ -417,10 +421,12 @@ async def test_process_transcript_returns_empty_list_when_nothing_extracted():
     assert result == []
 
 
-async def test_full_pipeline_writes_a_conflict_record_when_llm_says_contradicting():
-    """T042: a contradiction produces an explicit conflict record - linking
-    both knowledge ids via `conflicts_with` - instead of silently
-    overwriting or superseding the existing belief."""
+async def test_full_pipeline_writes_a_contradicting_statement_as_active_not_conflicting():
+    """Personal-vault pivot (docs/decisions/0014): a contradiction used to
+    produce an explicit CONFLICTING record held for human review (T042) -
+    that gate is gone now that a vault has one owner. A "contradicting"
+    relationship still gets written, just straight to ACTIVE like
+    anything else."""
     existing_record = _knowledge_record(
         statement="SSO is not planned for this fiscal year"
     )
@@ -438,11 +444,11 @@ async def test_full_pipeline_writes_a_conflict_record_when_llm_says_contradictin
 
     assert len(written) == 1
     record = written[0]
-    assert record.status == KnowledgeStatus.CONFLICTING
-    assert record.conflicts_with == [existing_record.id]
+    assert record.status == KnowledgeStatus.ACTIVE
+    assert record.conflicts_with == []
 
     conflicts = await client.list_conflicts()
-    assert [c.id for c in conflicts] == [record.id]
+    assert conflicts == []
 
 
 async def test_second_transcript_superseding_the_first_links_and_statuses_both_records():
