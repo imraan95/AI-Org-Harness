@@ -57,6 +57,22 @@ async def test_list_by_type_matches_only_that_type():
     assert [r.id for r in results] == [decision.id]
 
 
+async def test_list_by_theme_matches_records_with_that_theme_tag():
+    """Multi-tag by design (build-plan T086) - a record with several
+    themes should be found by any one of them."""
+    client = FakeOpenVikingClient()
+    tagged = _record(id="K-tagged", themes=["customer_problems", "strategic"])
+    other = _record(id="K-other", themes=["org_decisions"])
+    untagged = _record(id="K-untagged")
+    await client.write_knowledge(tagged)
+    await client.write_knowledge(other)
+    await client.write_knowledge(untagged)
+
+    results = await client.list_by_theme("strategic")
+
+    assert [r.id for r in results] == [tagged.id]
+
+
 async def test_update_knowledge_fields_persists_and_sets_edited_by():
     client = FakeOpenVikingClient()
     record = _record(statement="Original statement.")

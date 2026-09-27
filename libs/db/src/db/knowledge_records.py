@@ -107,6 +107,19 @@ async def list_knowledge_records_by_type(
     return [_row_to_record(row) for row in result.scalars()]
 
 
+async def list_knowledge_records_by_theme(
+    session: AsyncSession, theme_key: str
+) -> list[KnowledgeRecord]:
+    """Build-plan T086/T087: a user-defined custom theme is multi-valued
+    (`themes` is an array column), unlike `type` - membership, not
+    equality (`theme_key = ANY(themes)`, via SQLAlchemy's `.any()` on an
+    ARRAY column)."""
+    result = await session.execute(
+        select(KnowledgeRecordRow).where(KnowledgeRecordRow.themes.any(theme_key))
+    )
+    return [_row_to_record(row) for row in result.scalars()]
+
+
 async def list_all_knowledge_records(session: AsyncSession) -> list[KnowledgeRecord]:
     """No 256-match cap here (unlike OpenViking's glob-based `list_all`) -
     a plain, unpaginated `SELECT *`. Fine at this data's current scale;

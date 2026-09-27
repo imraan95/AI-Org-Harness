@@ -11,6 +11,7 @@ from db import (
     get_session_factory,
     list_all_knowledge_records,
     list_conflicting_knowledge_records,
+    list_knowledge_records_by_theme,
     list_knowledge_records_by_type,
     mark_knowledge_record_superseded,
     update_knowledge_record_fields,
@@ -79,6 +80,28 @@ async def test_themes_round_trip_and_default_to_empty():
     assert fetched_tagged.themes == ["customer_problems", "strategic"]
     assert fetched_untagged is not None
     assert fetched_untagged.themes == []
+
+    async with session_factory() as session:
+        await delete_knowledge_record(session, tagged.id)
+        await delete_knowledge_record(session, untagged.id)
+    await engine.dispose()
+
+
+async def test_list_by_theme_matches_via_array_membership():
+    engine = get_engine()
+    session_factory = get_session_factory(engine)
+    theme_key = f"theme_{uuid.uuid4().hex[:8]}"
+    tagged = _record(themes=[theme_key, "some_other_theme"])
+    untagged = _record()
+
+    async with session_factory() as session:
+        await upsert_knowledge_record(session, tagged)
+        await upsert_knowledge_record(session, untagged)
+
+    async with session_factory() as session:
+        results = await list_knowledge_records_by_theme(session, theme_key)
+
+    assert [r.id for r in results] == [tagged.id]
 
     async with session_factory() as session:
         await delete_knowledge_record(session, tagged.id)

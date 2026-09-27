@@ -32,6 +32,9 @@ class OpenVikingClient(ABC):
     async def list_by_type(self, knowledge_type: KnowledgeType) -> list[KnowledgeRecord]: ...
 
     @abstractmethod
+    async def list_by_theme(self, theme_key: str) -> list[KnowledgeRecord]: ...
+
+    @abstractmethod
     async def list_all(self) -> list[KnowledgeRecord]: ...
 
     @abstractmethod

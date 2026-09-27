@@ -21,7 +21,9 @@ from harness_api.main import app
 _AUTH_HEADERS = {"x-service-key": HARNESS_API_SERVICE_KEY}
 
 
-def _fixture_record(*, type: str, topic: str, statement: str) -> KnowledgeRecord:
+def _fixture_record(
+    *, type: str, topic: str, statement: str, themes: list[str] | None = None
+) -> KnowledgeRecord:
     now = datetime.now(timezone.utc)
     return KnowledgeRecord(
         id=f"K-t054-{uuid.uuid4()}",
@@ -35,6 +37,7 @@ def _fixture_record(*, type: str, topic: str, statement: str) -> KnowledgeRecord
         created_at=now,
         observed_at=now,
         last_updated_at=now,
+        themes=themes or [],
     )
 
 
@@ -125,8 +128,56 @@ async def test_context_strategy_returns_only_strategy_records():
     assert customer.id not in ids
 
 
+async def test_context_theme_returns_only_records_tagged_with_that_theme_key():
+    """T087: a generic route, not one hardcoded per fixed built-in type -
+    works for any user-defined theme key without a code change."""
+    run_id = uuid.uuid4().hex[:8]
+    theme_key = f"t087_theme_{run_id}"
+    tagged = _fixture_record(
+        type="customer_insight",
+        topic=f"t087_tagged_{run_id}",
+        statement="A tagged statement.",
+        themes=[theme_key, "some_other_theme"],
+    )
+    untagged = _fixture_record(
+        type="customer_insight",
+        topic=f"t087_untagged_{run_id}",
+        statement="An untagged statement.",
+    )
+    await _seed(tagged)
+    await _seed(untagged)
+
+    client = TestClient(app)
+    response = client.get(f"/context/theme/{theme_key}", headers=_AUTH_HEADERS)
+
+    assert response.status_code == 200
+    ids = {r["id"] for r in response.json()}
+    assert tagged.id in ids
+    assert untagged.id not in ids
+
+
+def test_context_theme_returns_empty_list_for_an_unknown_key():
+    """An unknown/mistyped theme key is zero matches, not an error - same
+    as any other list endpoint with nothing to return."""
+    client = TestClient(app)
+    response = client.get(
+        f"/context/theme/no-such-theme-{uuid.uuid4().hex[:8]}",
+        headers=_AUTH_HEADERS,
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
 def test_context_returns_401_without_a_token_or_service_key():
     client = TestClient(app)
     response = client.get("/context")
+
+    assert response.status_code == 401
+
+
+def test_context_theme_returns_401_without_a_token_or_service_key():
+    client = TestClient(app)
+    response = client.get("/context/theme/anything")
 
     assert response.status_code == 401

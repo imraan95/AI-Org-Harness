@@ -76,5 +76,11 @@ class HarnessAPIClient:
     async def get_conflicts(self) -> list[dict[str, Any]]:
         return await self._get_list("/conflicts")
 
+    async def get_context_for_theme(self, theme_key: str) -> list[dict[str, Any]]:
+        return await self._get_list(f"/context/theme/{theme_key}")
+
+    async def get_taxonomy_types(self) -> list[dict[str, Any]]:
+        return await self._get_list("/taxonomy/types")
+
     async def aclose(self) -> None:
         await self._client.aclose()

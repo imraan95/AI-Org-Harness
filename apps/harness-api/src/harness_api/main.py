@@ -239,6 +239,24 @@ async def get_context_strategy(
     return await openviking.list_by_type(KnowledgeType.STRATEGY)
 
 
+@app.get("/context/theme/{key}", response_model=list[KnowledgeRecord])
+async def get_context_theme(
+    key: str,
+    _user: dict = Depends(get_current_user_or_service),
+    openviking: OpenVikingClient = Depends(get_openviking_client),
+) -> list[KnowledgeRecord]:
+    # Build-plan T087: unlike /context/product|customer|strategy above
+    # (one hardcoded route per fixed built-in KnowledgeType), a
+    # workspace's user-defined themes (T077's custom_knowledge_types,
+    # T086's multi-tag `themes` field) are dynamic - this one generic
+    # route works for any theme key without a code change per theme.
+    # Deliberately doesn't validate `key` against the taxonomy first: an
+    # unknown/mistyped key just returns an empty list, same as any other
+    # list endpoint with no matches, rather than a 404/400 - a theme with
+    # zero records isn't an error.
+    return await openviking.list_by_theme(key)
+
+
 @app.post("/knowledge/{knowledge_id}/approve", response_model=KnowledgeRecord)
 async def approve_knowledge(
     knowledge_id: str,

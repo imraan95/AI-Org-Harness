@@ -35,6 +35,9 @@ class FakeOpenVikingClient(OpenVikingClient):
     async def list_by_type(self, knowledge_type: KnowledgeType) -> list[KnowledgeRecord]:
         return [r for r in self._records if r.type == knowledge_type]
 
+    async def list_by_theme(self, theme_key: str) -> list[KnowledgeRecord]:
+        return [r for r in self._records if theme_key in r.themes]
+
     async def list_all(self) -> list[KnowledgeRecord]:
         return list(self._records)
 

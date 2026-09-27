@@ -17,6 +17,9 @@ class _MinimalClient(OpenVikingClient):
     async def list_by_type(self, knowledge_type):
         return []
 
+    async def list_by_theme(self, theme_key):
+        return []
+
     async def list_all(self):
         return []
 

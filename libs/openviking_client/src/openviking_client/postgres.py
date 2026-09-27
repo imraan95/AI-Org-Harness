@@ -8,6 +8,7 @@ from db import (
     get_session_factory,
     list_all_knowledge_records,
     list_conflicting_knowledge_records,
+    list_knowledge_records_by_theme,
     list_knowledge_records_by_type,
     mark_knowledge_record_superseded,
     update_knowledge_record_fields,
@@ -67,6 +68,10 @@ class PostgresOpenVikingClient(OpenVikingClient):
     async def list_by_type(self, knowledge_type: KnowledgeType) -> list[KnowledgeRecord]:
         async with self._session_factory() as session:
             return await list_knowledge_records_by_type(session, knowledge_type)
+
+    async def list_by_theme(self, theme_key: str) -> list[KnowledgeRecord]:
+        async with self._session_factory() as session:
+            return await list_knowledge_records_by_theme(session, theme_key)
 
     async def list_all(self) -> list[KnowledgeRecord]:
         async with self._session_factory() as session:

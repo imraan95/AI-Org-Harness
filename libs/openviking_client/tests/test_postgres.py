@@ -80,6 +80,22 @@ async def test_list_by_type_matches_only_that_type():
     await engine.dispose()
 
 
+async def test_list_by_theme_matches_only_records_with_that_theme_tag():
+    engine = get_engine()
+    client = _client(engine)
+    tagged = _record(themes=["customer_problems", "strategic"])
+    other = _record(themes=["org_decisions"])
+    await client.write_knowledge(tagged)
+    await client.write_knowledge(other)
+
+    results = await client.list_by_theme("strategic")
+
+    ids = {r.id for r in results}
+    assert tagged.id in ids
+    assert other.id not in ids
+    await engine.dispose()
+
+
 async def test_list_conflicts_returns_only_conflicting_status():
     engine = get_engine()
     client = _client(engine)

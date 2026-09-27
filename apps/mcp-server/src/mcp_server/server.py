@@ -169,6 +169,44 @@ async def get_knowledge_history(knowledge_id: str) -> str:
 
 
 @mcp.tool()
+async def list_available_themes() -> str:
+    """List the custom themes this organisation has defined to track in
+    the knowledge harness, beyond the built-in categories the other tools
+    here already cover (decisions, strategy, customer insights, product
+    requirements, people). A record can be tagged with more than one
+    theme at once. Use this first to discover what theme keys exist,
+    then pass one of them to get_context_for_theme to see the matching
+    records - e.g. an organisation might define "Customer Problems",
+    "Org Decisions", or "Strategic" as its own tracked themes."""
+    client = _client_factory()
+    try:
+        types = await client.get_taxonomy_types()
+    finally:
+        await client.aclose()
+    custom = [t for t in types if not t.get("builtin", True)]
+    if not custom:
+        return "No custom themes are configured for this organisation yet."
+    lines = [f'- {t["key"]}: {t["label"]}' for t in custom]
+    return "Available themes (key: label):\n" + "\n".join(lines)
+
+
+@mcp.tool()
+async def get_context_for_theme(theme_key: str) -> str:
+    """Every record tagged with a specific custom theme this organisation
+    has defined (see list_available_themes for what's available, e.g.
+    "customer_problems" or "strategic"). Use this once you know which
+    theme key you're after; use list_available_themes first if you
+    don't. Pass the theme's key exactly as it's configured, not its
+    display label."""
+    client = _client_factory()
+    try:
+        records = await client.get_context_for_theme(theme_key)
+    finally:
+        await client.aclose()
+    return format_answer(records)
+
+
+@mcp.tool()
 async def get_conflicting_information() -> str:
     """Potential contradictions and pending confirmations currently
     flagged in the knowledge harness - places where recorded
