@@ -41,6 +41,14 @@ class KnowledgeRecord(BaseModel):
     # auto-resolved. Empty for every other status.
     conflicts_with: list[str] = []
 
+    # Build-plan T086: user-defined custom themes (T077's
+    # custom_knowledge_types, e.g. "Customer Problems", "Strategic") a
+    # record has been tagged with. Deliberately separate from `type`
+    # above and multi-valued, not single-select - a statement can belong
+    # to more than one theme at once, unlike `type`'s one-per-record
+    # classification. Empty until the pipeline's theme-tagging step runs.
+    themes: list[str] = []
+
     # Permissions scaffold (PRD §18): "one trusted workspace, no complex
     # RBAC" for MVP, but every record carries these so a real permissions
     # model can be added later without a rewrite. Not enforced anywhere

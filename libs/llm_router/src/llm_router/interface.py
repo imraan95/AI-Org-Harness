@@ -32,6 +32,9 @@ class LLM(ABC):
     ) -> str | None: ...
 
     @abstractmethod
+    async def matches_theme(self, statement: str, theme_label: str) -> bool: ...
+
+    @abstractmethod
     async def summarise(self, text: str) -> str: ...
 
     @abstractmethod

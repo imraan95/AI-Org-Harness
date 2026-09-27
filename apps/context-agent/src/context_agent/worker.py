@@ -53,6 +53,6 @@ async def run_worker_once(
         await mark_job_done(session, job.id)
         return []
 
-    written = await process_transcript(transcript, llm, openviking)
+    written = await process_transcript(transcript, llm, openviking, session=session)
     await mark_job_done(session, job.id)
     return written

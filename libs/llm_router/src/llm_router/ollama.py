@@ -228,6 +228,27 @@ class OllamaLLM(LLM):
                 return existing_topic
         return None
 
+    async def matches_theme(self, statement: str, theme_label: str) -> bool:
+        # Build-plan T086: does this statement belong to a user-defined
+        # custom theme (e.g. "Customer Problems", "Strategic")? Modeled
+        # directly on match_topic()'s proven shape (docs/decisions/0008/
+        # 0012), not classify()'s "pick one from a list" shape - themes
+        # are multi-valued (a statement can match several at once), so
+        # this is asked as one plain yes/no question per theme, the same
+        # pairwise pattern that was already found to be far more reliable
+        # at this model size than a single multi-select prompt.
+        # temperature=0.0 for the same reason match_topic()/compare() use
+        # it: a judgment call should answer the same input the same way
+        # every time.
+        prompt = (
+            "Does the following statement relate to this theme: "
+            f'"{theme_label}"?\n\n'
+            f"Statement: {statement}\n\n"
+            'Reply with ONLY "yes" or "no".'
+        )
+        raw = (await self._call(prompt, temperature=0.0)).strip().lower()
+        return raw.startswith("yes")
+
     async def summarise(self, text: str) -> str:
         raise NotImplementedError("OllamaLLM.summarise is not wired up yet")
 

@@ -67,6 +67,25 @@ async def test_match_topic_returns_none_when_nothing_existing_is_the_same_subjec
     assert result is None
 
 
+async def test_matches_theme_returns_true_for_an_on_theme_statement():
+    llm = OllamaLLM()
+    result = await llm.matches_theme(
+        "Three enterprise customers have asked for SSO this quarter and "
+        "Sales considers it a potential deal blocker.",
+        "Customer Problems",
+    )
+    assert result is True
+
+
+async def test_matches_theme_returns_false_for_an_unrelated_statement():
+    llm = OllamaLLM()
+    result = await llm.matches_theme(
+        "The team meeting has been moved to 4pm on Thursday.",
+        "Customer Problems",
+    )
+    assert result is False
+
+
 async def test_embed_returns_a_nonempty_vector_of_floats():
     llm = OllamaLLM()
     result = await llm.embed("Three enterprise customers have asked for SSO.")

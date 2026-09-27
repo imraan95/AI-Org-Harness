@@ -6,8 +6,17 @@ from llm_router import FakeLLM
 from openviking_client import FakeOpenVikingClient
 from shared_schemas import Transcript
 
+from db import get_engine, get_session_factory
+
 from context_agent import process_transcript
-from context_agent.pipeline import _classify, _compare, _extract, _retrieve, _write
+from context_agent.pipeline import (
+    _classify,
+    _compare,
+    _extract,
+    _retrieve,
+    _tag_themes,
+    _write,
+)
 
 
 def _transcript() -> Transcript:
@@ -207,6 +216,107 @@ async def test_classify_assigns_type_via_llm_and_confidence_via_rules():
     assert fake_llm.classify_calls == [
         ("SSO is being requested", [t.value for t in KnowledgeType])
     ]
+
+
+async def test_tag_themes_returns_empty_list_and_makes_no_calls_when_no_themes_configured():
+    """The default/common case today - a workspace with no custom themes
+    costs nothing extra."""
+    fake_llm = FakeLLM()
+    classified = [{"topic": "enterprise_sso", "statement": "..."}]
+
+    tagged = await _tag_themes(fake_llm, [], classified)
+
+    assert tagged == [{"topic": "enterprise_sso", "statement": "...", "themes": []}]
+    assert fake_llm.matches_theme_calls == []
+
+
+async def test_tag_themes_asks_one_yes_no_question_per_configured_theme():
+    fake_llm = FakeLLM()
+    fake_llm.set_next_matches_theme_result(True)
+    classified = [{"topic": "enterprise_sso", "statement": "A customer complaint"}]
+    custom_themes = [
+        ("customer_problems", "Customer Problems"),
+        ("strategic", "Strategic"),
+    ]
+
+    tagged = await _tag_themes(fake_llm, custom_themes, classified)
+
+    assert tagged[0]["themes"] == ["customer_problems", "strategic"]
+    assert fake_llm.matches_theme_calls == [
+        ("A customer complaint", "Customer Problems"),
+        ("A customer complaint", "Strategic"),
+    ]
+
+
+async def test_tag_themes_can_return_zero_or_more_than_one_match():
+    """Multi-tag by design (build-plan T086) - unlike `type`, a candidate
+    can match none, one, or several themes, not exactly one."""
+    fake_llm = FakeLLM()
+    responses = iter([True, False])
+
+    async def _fake_matches_theme(statement, theme_label):
+        fake_llm.matches_theme_calls.append((statement, theme_label))
+        return next(responses)
+
+    fake_llm.matches_theme = _fake_matches_theme  # type: ignore[method-assign]
+    classified = [{"topic": "enterprise_sso", "statement": "..."}]
+    custom_themes = [("customer_problems", "Customer Problems"), ("strategic", "Strategic")]
+
+    tagged = await _tag_themes(fake_llm, custom_themes, classified)
+
+    assert tagged[0]["themes"] == ["customer_problems"]
+
+
+async def test_process_transcript_leaves_themes_empty_when_no_session_is_passed():
+    """Every existing caller (every test above this one, plus any future
+    caller with no Postgres session) keeps working unchanged - passing no
+    session is a real, supported no-op, not just an untested default."""
+    fake_llm = FakeLLM()
+    fake_llm.set_next_extract_result(
+        [{"topic": "enterprise_sso", "statement": "SSO is being requested"}]
+    )
+    fake_llm.set_next_classify_result("customer_insight")
+    client = FakeOpenVikingClient()
+
+    written = await process_transcript(_transcript(), fake_llm, client)
+
+    assert written[0].themes == []
+    assert fake_llm.matches_theme_calls == []
+
+
+async def test_process_transcript_applies_real_configured_themes_when_session_is_passed():
+    """Integration check for T086's actual wiring: given a real session,
+    process_transcript fetches the workspace's real custom themes
+    (migration 20260927100000's 3 preselected ones) and tags candidates
+    with them - the thing that was missing before this task (a theme
+    could be defined via T077's taxonomy UI but never actually applied).
+    """
+    engine = get_engine()
+    session_factory = get_session_factory(engine)
+
+    fake_llm = FakeLLM()
+    fake_llm.set_next_extract_result(
+        [{"topic": "enterprise_sso", "statement": "A customer complaint"}]
+    )
+    fake_llm.set_next_classify_result("customer_insight")
+    fake_llm.set_next_matches_theme_result(True)
+    client = FakeOpenVikingClient()
+
+    async with session_factory() as session:
+        written = await process_transcript(
+            _transcript(), fake_llm, client, session=session
+        )
+
+    assert len(written) == 1
+    # Set comparison, not list equality - list_custom_knowledge_types'
+    # ordering among rows inserted in the same migration statement isn't
+    # guaranteed, and the point here is "were the real configured themes
+    # actually applied", not "in what order".
+    assert set(written[0].themes) == {"customer_problems", "org_decisions", "strategic"}
+    asked_labels = {label for _, label in fake_llm.matches_theme_calls}
+    assert asked_labels == {"Customer Problems", "Org Decisions", "Strategic"}
+
+    await engine.dispose()
 
 
 async def test_write_persists_records_with_correct_statuses_for_impact_level():

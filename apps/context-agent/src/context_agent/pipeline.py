@@ -5,10 +5,12 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from db import list_custom_knowledge_types
 from knowledge_model import KnowledgeRecord, KnowledgeStatus, KnowledgeType
 from llm_router import LLM
 from openviking_client import OpenVikingClient
 from shared_schemas import Transcript
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from .confidence import confidence_bucket, score_confidence
 from .topic_canonicalize import canonicalize_topic
@@ -107,6 +109,42 @@ async def _classify(
     return classified
 
 
+async def _tag_themes(
+    llm: LLM,
+    custom_themes: list[tuple[str, str]],
+    classified: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Tag each classified candidate with zero or more user-defined custom
+    themes (T077's `custom_knowledge_types`, e.g. "Customer Problems",
+    "Strategic") - build-plan T086.
+
+    Deliberately separate from `_classify()`'s `type` assignment above:
+    `type` is a single pick from the fixed built-in taxonomy, but themes
+    are multi-valued by design (a statement can be both a customer
+    problem and a strategic signal at once), so each candidate is asked
+    one plain yes/no question per theme (`llm.matches_theme` - the same
+    pairwise pattern match_topic() already proved more reliable than a
+    single multi-select prompt at this model size, docs/decisions/0008),
+    not a single "pick all that apply" call.
+
+    `custom_themes` is `[(key, label), ...]` - the key is what gets
+    stored (matches `custom_knowledge_types.key`), the label is what the
+    model sees. Costs 0 extra calls per candidate when a workspace has no
+    custom themes configured (the common/default case today).
+    """
+    if not custom_themes:
+        return [{**item, "themes": []} for item in classified]
+
+    tagged: list[dict[str, Any]] = []
+    for item in classified:
+        matched_keys: list[str] = []
+        for key, label in custom_themes:
+            if await llm.matches_theme(item["statement"], label):
+                matched_keys.append(key)
+        tagged.append({**item, "themes": matched_keys})
+    return tagged
+
+
 def _determine_status(
     existing: list[KnowledgeRecord], relationship: str, confidence: float
 ) -> KnowledgeStatus:
@@ -184,6 +222,7 @@ async def _write(
             confidence=confidence,
             source_ids=item.get("source_ids") or ([transcript_id] if transcript_id else []),
             people=item.get("people", []),
+            themes=item.get("themes", []),
             supersedes=supersedes,
             created_at=now,
             observed_at=now,
@@ -196,12 +235,25 @@ async def _write(
 
 
 async def process_transcript(
-    transcript: Transcript, llm: LLM, openviking: OpenVikingClient
+    transcript: Transcript,
+    llm: LLM,
+    openviking: OpenVikingClient,
+    session: AsyncSession | None = None,
 ) -> list[KnowledgeRecord]:
     """Entry point for the context agent pipeline (PRD §3, §6, §9).
 
-    Runs Extract, Retrieve, Compare, Classify and Write end to end, and
-    returns whatever knowledge records were written.
+    Runs Extract, Retrieve, Compare, Classify, (Tag themes) and Write end
+    to end, and returns whatever knowledge records were written.
+
+    `session` (build-plan T086) is optional and defaults to skipping
+    theme-tagging entirely, so every existing caller that doesn't pass
+    one (every test that predates T086, plus any future caller with no
+    Postgres session handy) keeps working exactly as before - `themes`
+    just stays empty. Passing a real session (the same one the caller
+    already has open for `custom_knowledge_types`, e.g. `worker.py`'s)
+    is what turns a workspace's user-defined themes from decorative
+    (definable via T077's taxonomy UI, but never actually applied) into
+    live.
     """
     logger.info("Received transcript %s for processing", transcript.id)
 
@@ -224,6 +276,17 @@ async def process_transcript(
     classified = await _classify(llm, compared)
     logger.info("Classified %d candidate(s)", len(classified))
 
-    written = await _write(openviking, classified, transcript.id)
+    custom_themes: list[tuple[str, str]] = []
+    if session is not None:
+        custom_types = await list_custom_knowledge_types(session, "default")
+        custom_themes = [(row.key, row.label) for row in custom_types]
+    tagged = await _tag_themes(llm, custom_themes, classified)
+    logger.info(
+        "Tagged themes for %d candidate(s) against %d configured theme(s)",
+        len(tagged),
+        len(custom_themes),
+    )
+
+    written = await _write(openviking, tagged, transcript.id)
     logger.info("Wrote %d knowledge record(s)", len(written))
     return written

@@ -59,6 +59,33 @@ async def test_write_then_get_by_id():
     await engine.dispose()
 
 
+async def test_themes_round_trip_and_default_to_empty():
+    """Build-plan T086: multi-tag custom themes, a new array column
+    alongside the existing single-select `type`."""
+    engine = get_engine()
+    session_factory = get_session_factory(engine)
+    tagged = _record(themes=["customer_problems", "strategic"])
+    untagged = _record()
+
+    async with session_factory() as session:
+        await upsert_knowledge_record(session, tagged)
+        await upsert_knowledge_record(session, untagged)
+
+    async with session_factory() as session:
+        fetched_tagged = await get_knowledge_record_by_id(session, tagged.id)
+        fetched_untagged = await get_knowledge_record_by_id(session, untagged.id)
+
+    assert fetched_tagged is not None
+    assert fetched_tagged.themes == ["customer_problems", "strategic"]
+    assert fetched_untagged is not None
+    assert fetched_untagged.themes == []
+
+    async with session_factory() as session:
+        await delete_knowledge_record(session, tagged.id)
+        await delete_knowledge_record(session, untagged.id)
+    await engine.dispose()
+
+
 async def test_get_by_topic_is_an_exact_match_not_substring():
     engine = get_engine()
     session_factory = get_session_factory(engine)

@@ -84,3 +84,24 @@ def test_conflicts_with_default_is_not_shared_between_instances():
     b = KnowledgeRecord(**_valid_kwargs())
     a.conflicts_with.append("K-99999")
     assert b.conflicts_with == []
+
+
+def test_themes_defaults_to_empty_list():
+    record = KnowledgeRecord(**_valid_kwargs())
+    assert record.themes == []
+
+
+def test_themes_can_hold_more_than_one_tag():
+    """Multi-tag by design (build-plan T086) - unlike `type`, a record can
+    belong to more than one user-defined theme at once."""
+    record = KnowledgeRecord(
+        **_valid_kwargs(themes=["customer_problems", "strategic"])
+    )
+    assert record.themes == ["customer_problems", "strategic"]
+
+
+def test_themes_default_is_not_shared_between_instances():
+    a = KnowledgeRecord(**_valid_kwargs())
+    b = KnowledgeRecord(**_valid_kwargs())
+    a.themes.append("strategic")
+    assert b.themes == []

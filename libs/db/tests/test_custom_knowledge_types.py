@@ -71,3 +71,27 @@ async def test_delete_returns_false_for_unknown_key():
     assert deleted is False
 
     await engine.dispose()
+
+
+async def test_default_workspace_has_the_three_preselected_types():
+    """Migration 20260927100000 seeds these for workspace_id='default' - a
+    new workspace shouldn't start with an empty taxonomy. Reads only (no
+    setup/teardown) since this is checking seeded data, not creating it -
+    a random per-test workspace_id (like every other test in this file)
+    would never see the seed at all. A 4th ("Team Personas") was dropped
+    the same day pending a separate design/policy decision - see
+    docs/build-plan.md's "Open design questions".
+    """
+    engine = get_engine()
+    session_factory = get_session_factory(engine)
+
+    async with session_factory() as session:
+        types = await list_custom_knowledge_types(session, "default")
+
+    assert {t.key for t in types} >= {
+        "customer_problems",
+        "org_decisions",
+        "strategic",
+    }
+
+    await engine.dispose()

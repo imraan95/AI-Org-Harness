@@ -30,6 +30,7 @@ def _row_to_record(row: KnowledgeRecordRow) -> KnowledgeRecord:
         owner=row.owner,
         access_level=row.access_level,
         edited_by=row.edited_by,
+        themes=list(row.themes),
     )
 
 
@@ -55,6 +56,7 @@ def _record_to_row(record: KnowledgeRecord) -> KnowledgeRecordRow:
         owner=record.owner,
         access_level=record.access_level,
         edited_by=record.edited_by,
+        themes=list(record.themes),
     )
 
 

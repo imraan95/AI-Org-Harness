@@ -19,6 +19,9 @@ class _MinimalLLM(LLM):
     async def match_topic(self, candidate, existing_topics):
         return None
 
+    async def matches_theme(self, statement, theme_label):
+        return False
+
     async def summarise(self, text):
         return ""
 

@@ -90,6 +90,7 @@ class KnowledgeRecordRow(Base):
     owner: Mapped[str | None] = mapped_column(Text, nullable=True)
     access_level: Mapped[str] = mapped_column(Text, default="standard")
     edited_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    themes: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list)
 
 
 class IngestionEventRow(Base):
